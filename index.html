@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ナス先デイトレ道場</title>
+<title>シバイヌおやびんのデイトレ練習ゲーム</title>
 <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 <script src="dataio.js"></script>
 <!-- 自分のPCで遊ぶ時だけある任意のファイル（公開版には置かない） -->
@@ -15,6 +15,7 @@
     color-scheme: dark; /* スクロールバーや入力欄も暗い色にする */
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, "Segoe UI", "Hiragino Sans", "Yu Gothic UI", sans-serif; }
   header { display: flex; align-items: center; gap: 16px; padding: 8px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   header h1 { font-size: 16px; margin: 0; }
@@ -46,7 +47,10 @@
   input[type=number], select { font: inherit; color: var(--text); background: #0f1218; border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; width: 70px; }
   select { width: auto; }
   label { display: flex; align-items: center; gap: 6px; }
-  .grid2 { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; }
+  .grid2 { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 10px; align-items: center; }
+  .grid2 .wide { grid-column: 1 / 3; }
+  select.wide { width: 100%; }
+  input[type=time] { font: inherit; color: var(--text); background: #0f1218; border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; }
   .small { font-size: 12px; color: var(--muted); }
   .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
   dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 20px; max-width: 640px; width: calc(100% - 32px); }
@@ -86,7 +90,7 @@
 </head>
 <body>
 <header>
-  <h1>ナス先デイトレ道場</h1>
+  <h1>シバイヌおやびんのデイトレ練習ゲーム</h1>
   <span id="dayLabel">-</span>
   <span id="clock">--:-- JST</span>
   <span id="progress" class="small"></span>
@@ -106,7 +110,7 @@
     <div class="box">
       <h2>再生</h2>
       <div class="ctrl">
-        <button id="btnPlay" style="flex:1">▶ 再生 (Space)</button>
+        <button id="btnPlay" style="flex:1">▶ スタート (Space)</button>
         <button id="btnStep">1本送り (→)</button>
       </div>
       <div style="margin-top:8px">
@@ -194,16 +198,23 @@
     <div class="box">
       <h2>設定</h2>
       <div class="grid2">
-        <span>銘柄</span>
-        <select id="instSel">
+        <span class="wide">銘柄</span>
+        <select id="instSel" class="wide">
           <option value="MNQ">マイクロ・ナスダック (MNQ) 1pt = $2</option>
           <option value="NQ">E-mini ナスダック (NQ) 1pt = $20</option>
           <option value="MES">マイクロ S&amp;P500 (MES) 1pt = $5</option>
           <option value="ES">E-mini S&amp;P500 (ES) 1pt = $50</option>
+          <option value="MCL">マイクロ原油 (MCL) 1pt = $100</option>
+          <option value="CL">原油 (CL) 1pt = $1,000</option>
+          <option value="MGC">マイクロ金 (MGC) 1pt = $10</option>
+          <option value="GC">金 (GC) 1pt = $100</option>
           <option value="custom">その他（自分で入力）</option>
         </select>
         <span class="instCustom">1pt の価値</span><label class="instCustom">$ <input id="instPv" type="number" min="0" step="0.01"></label>
         <span class="instCustom">呼び値（刻み）</span><input class="instCustom" id="instTick" type="number" min="0" step="0.0001">
+        <span class="wide">本場の時間（米国東部時間）</span>
+        <label class="wide"><input id="rthStart" type="time" step="300"> 〜 <input id="rthEnd" type="time" step="300"></label>
+        <span class="small wide" id="rthNote"></span>
         <span>手数料</span><label><input id="fee" type="number" min="0" step="0.05"> $/枚・片道</label>
       </div>
     </div>
@@ -229,7 +240,7 @@
       <li>TradingView でチャートを開き、遊びたい銘柄を表示します（例：<code>MNQ1!</code>、<code>NQ1!</code>、<code>ES1!</code>）。</li>
       <li>時間足を <b>5分</b> にします。<span class="small">（1分・2分・3分足でもOK。ゲームが自動で5分足にまとめます）</span></li>
       <li>チャートを<b>左へスクロール</b>して、遊びたい日まで過去の足を表示させます。<span class="small">書き出されるのは、チャートに読み込まれている足だけです。</span></li>
-      <li>画面上部のチャートレイアウト名の横のメニュー（∨）から、<b>「チャートデータをエクスポート」</b>を選びます。</li>
+      <li>画面上部のチャートレイアウト名の横のメニュー（∨）から、<b>「チャートデータのダウンロード」</b>を選びます。</li>
       <li>「時間の形式」は <b>ISO 時間</b> か <b>UNIX タイムスタンプ</b> を選ぶのがおすすめです（時刻のずれが起きません）。</li>
       <li>書き出されたCSVファイルを、下の「3」で読み込みます。</li>
     </ol>
@@ -289,7 +300,7 @@
   <div class="grid2">
     <span>時間帯</span>
     <select id="modeSel">
-      <option value="rth">米国本場のみ（日本時間 22:30–翌5:00、冬時間は23:30–翌6:00 / 78本）</option>
+      <option value="rth">本場のみ</option>
       <option value="globex">先物の1日（日本時間 7:00–翌6:00、冬時間は8:00–翌7:00）</option>
     </select>
     <span>日付</span>
@@ -343,10 +354,13 @@
 <script>
 (() => {
   'use strict';
-  // 銘柄ごとの 1pt の価値（ドル）と呼び値
+  // 銘柄ごとの 1pt の価値（ドル）・呼び値・本場の時間（ET の 0時からの分）
+  const STOCK = [570, 960], CRUDE = [540, 870], GOLD = [500, 810]; // 9:30–16:00 / 9:00–14:30 / 8:20–13:30
   const INSTRUMENTS = {
-    MNQ: { pv: 2, tick: 0.25, label: 'MNQ' }, NQ: { pv: 20, tick: 0.25, label: 'NQ' },
-    MES: { pv: 5, tick: 0.25, label: 'MES' }, ES: { pv: 50, tick: 0.25, label: 'ES' },
+    MNQ: { pv: 2, tick: 0.25, label: 'MNQ', rth: STOCK }, NQ: { pv: 20, tick: 0.25, label: 'NQ', rth: STOCK },
+    MES: { pv: 5, tick: 0.25, label: 'MES', rth: STOCK }, ES: { pv: 50, tick: 0.25, label: 'ES', rth: STOCK },
+    MCL: { pv: 100, tick: 0.01, label: 'MCL', rth: CRUDE }, CL: { pv: 1000, tick: 0.01, label: 'CL', rth: CRUDE },
+    MGC: { pv: 10, tick: 0.1, label: 'MGC', rth: GOLD }, GC: { pv: 100, tick: 0.1, label: 'GC', rth: GOLD },
   };
   const PRE_BARS = 120;        // 開始前に見せる本数
   const SPEEDS = [5000, 3000, 2000, 1500, 1000, 700, 500, 300, 150, 50]; // ms/本
@@ -365,7 +379,7 @@
     bb: { on: true, period: 20, mid: true, s1: true, s2: false, s3: false },
     vwap: true,
     panel: { on: true, maLen: 20, slopeBars: 3, slopeTh: 0.02, posBand: 0.05, size: '大' },
-    inst: { kind: 'MNQ', pv: 2, tick: 0.25 },
+    inst: { kind: 'MNQ', pv: 2, tick: 0.25, rth: [570, 960] },
     tz: 'America/New_York', lastData: '',
   };
   let cfg;
@@ -377,6 +391,13 @@
   cfg.inst = Object.assign({}, DEFAULTS.inst, cfg.inst);
   const pointValue = () => cfg.inst.kind === 'custom' ? cfg.inst.pv : INSTRUMENTS[cfg.inst.kind].pv;
   const tickSize = () => (cfg.inst.kind === 'custom' ? cfg.inst.tick : INSTRUMENTS[cfg.inst.kind].tick) || 0.01;
+  const rthHours = () => {
+    const r = cfg.inst.rth;
+    return Array.isArray(r) && r[1] > r[0] ? r : STOCK;
+  };
+  const hhmm = m => `${Math.floor(m / 60) % 24}:${String(m % 60).padStart(2, '0')}`;
+  // ET の時刻を日本時間で（夏時間は +13 時間、冬時間は +14 時間）
+  const jst = (m, add) => { const t = m + add * 60; return (t >= 1440 ? '翌' : '') + hhmm(t % 1440); };
   if (!Array.isArray(cfg.sma) || cfg.sma.length !== 3) cfg.sma = fresh().sma;
   const saveCfg = () => { try { localStorage.setItem('nqdojo-cfg', JSON.stringify(cfg)); } catch (e) {} };
 
@@ -511,7 +532,7 @@
   const isoDay = ms => new Date(ms).toISOString().slice(0, 10);
   const WD = ['日', '月', '火', '水', '木', '金', '土'];
 
-  const prepareBars = raw => raw.map(([t, o, h, l, c, v]) => {
+  const prepareBars = raw => { const [rs, re] = rthHours(); return raw.map(([t, o, h, l, c, v]) => {
     const p = {};
     for (const x of etFmt.formatToParts(new Date(t * 1000))) p[x.type] = +x.value;
     const dayMs = Date.UTC(p.year, p.month - 1, p.day);
@@ -519,10 +540,10 @@
     // チャートは UTC 表示なので、日本時間（UTC+9、夏時間なし）の壁時計を UTC とみなして渡す
     // 時間帯の判定（rth / globex）は ET のまま
     const time = t + 9 * 3600;
-    const rth = hm >= 570 && hm < 960 ? isoDay(dayMs) : null;           // 9:30–16:00
+    const rth = hm >= rs && hm < re ? isoDay(dayMs) : null;             // 本場（銘柄ごとの時間）
     const globex = p.hour === 17 ? null : isoDay(p.hour >= 18 ? dayMs + 86400000 : dayMs); // 前日18:00〜17:00
     return { t, time, o, h, l, c, v, hm, rth, globex };
-  });
+  }); };
 
   function buildSessions(list, key, minBars) {
     const m = new Map();
@@ -533,7 +554,11 @@
     });
     return [...m.values()].filter(s => s.end - s.start + 1 >= minBars && s.start > 0).map((s, n) => Object.assign(s, { n }));
   }
-  const sessionsOf = list => ({ rth: buildSessions(list, 'rth', 60), globex: buildSessions(list, 'globex', 200) });
+  // 本場は時間内の足の 4分の3 以上そろっている日だけ使う
+  const sessionsOf = list => {
+    const [rs, re] = rthHours();
+    return { rth: buildSessions(list, 'rth', Math.max(6, Math.floor((re - rs) / 5 * 0.75))), globex: buildSessions(list, 'globex', 200) };
+  };
   let bars = [], SESSIONS = { rth: [], globex: [] }, dataset = null;
 
   // ---------- チャート ----------
@@ -851,7 +876,7 @@
     $('btnFlat').disabled = !can || !state.pos;
     $('btnRev').disabled = !can || !state.pos;
     $('btnPlay').disabled = $('btnStep').disabled = state.done;
-    $('btnPlay').textContent = state.playing ? '❚❚ 停止 (Space)' : '▶ 再生 (Space)';
+    $('btnPlay').textContent = state.playing ? '❚❚ 停止 (Space)' : '▶ スタート (Space)';
   }
 
   // ---------- 進行 ----------
@@ -1037,7 +1062,9 @@
   function openStart() {
     setPlaying(false);
     if (!dataset) { openData(); return; }
-    // 遊べる日がない時間帯は選べないようにする
+    // 本場の時間を銘柄の設定に合わせて表示し、遊べる日がない時間帯は選べないようにする
+    const [rs, re] = rthHours();
+    $('modeSel').options[0].textContent = `本場のみ（${hhmm(rs)}–${hhmm(re)} ET ＝ 日本時間 ${jst(rs, 13)}–${jst(re, 13)}、冬時間は${jst(rs, 14)}–${jst(re, 14)} / ${(re - rs) / 5}本）`;
     for (const o of $('modeSel').options) o.disabled = !SESSIONS[o.value].length;
     if (!SESSIONS[cfg.mode].length) cfg.mode = SESSIONS.rth.length ? 'rth' : 'globex';
     $('modeSel').value = cfg.mode; $('hideDate').checked = cfg.hideDate;
@@ -1175,13 +1202,42 @@
     for (const el of document.querySelectorAll('.instCustom')) el.hidden = !custom;
     $('instPv').value = cfg.inst.pv; $('instTick').value = cfg.inst.tick;
     const name = custom ? '1pt' : `${INSTRUMENTS[cfg.inst.kind].label} 1pt`;
-    $('instLabel').textContent = `${name} = $${pointValue()}`;
+    $('instLabel').textContent = `${name} = $${pointValue().toLocaleString('en-US')}`;
+    const [rs, re] = rthHours(), pad = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+    $('rthStart').value = pad(rs); $('rthEnd').value = pad(re);
+    $('rthNote').textContent = `日本時間 ${jst(rs, 13)}〜${jst(re, 13)}（冬時間は ${jst(rs, 14)}〜${jst(re, 14)}）`;
   }
+
+  // 本場の時間が変わったら、遊べる日を数え直す（遊んでいる途中の日は終わりにする）
+  function setHours(next) {
+    const prev = rthHours();
+    if (next[0] === prev[0] && next[1] === prev[1]) return true;
+    if (state.session && !state.done && !confirm('本場の時間が変わるので、いま遊んでいる日は記録せずに終わります。よろしいですか？')) return false;
+    cfg.inst.rth = next;
+    if (dataset) { useDataset(dataset); }
+    return true;
+  }
+
   $('instSel').addEventListener('change', () => {
-    cfg.inst.kind = $('instSel').value;
-    if (cfg.inst.kind !== 'custom') Object.assign(cfg.inst, { pv: INSTRUMENTS[cfg.inst.kind].pv, tick: INSTRUMENTS[cfg.inst.kind].tick });
+    const kind = $('instSel').value, preset = INSTRUMENTS[kind];
+    if (preset && !setHours(preset.rth.slice())) { renderInst(); return; }
+    cfg.inst.kind = kind;
+    if (preset) Object.assign(cfg.inst, { pv: preset.pv, tick: preset.tick });
     saveCfg(); renderInst(); updatePanel();
   });
+  const readHours = () => {
+    const toMin = v => { const m = /^(\d{1,2}):(\d{2})/.exec(v || ''); return m ? +m[1] * 60 + +m[2] : NaN; };
+    const s = toMin($('rthStart').value), e = toMin($('rthEnd').value);
+    return isFinite(s) && isFinite(e) && e - s >= 30 ? [s - s % 5, e - e % 5] : null;
+  };
+  for (const id of ['rthStart', 'rthEnd']) {
+    $(id).addEventListener('change', () => {
+      const h = readHours();
+      if (h) setHours(h);
+      else alert('本場の時間は、終わりが始まりより30分以上あとになるように入れてください（ET・24時間表記）。');
+      saveCfg(); renderInst();
+    });
+  }
   $('instPv').addEventListener('change', () => { cfg.inst.pv = Math.max(0, parseFloat($('instPv').value) || 0); saveCfg(); renderInst(); updatePanel(); });
   $('instTick').addEventListener('change', () => { cfg.inst.tick = Math.max(0, parseFloat($('instTick').value) || 0) || 0.01; saveCfg(); renderInst(); });
   renderInst();
@@ -1250,7 +1306,7 @@
     const lines = [
       `<b>✓ 読み込めました：</b>${esc(lastFile)}`,
       `5分足 <b>${raw.length.toLocaleString()}本</b>（${fmtDate(raw[0][0])} 〜 ${fmtDate(raw[raw.length - 1][0])} 日本時間）`,
-      `遊べる日：米国本場 <b>${ss.rth.length}日</b> ／ 先物の1日 <b>${ss.globex.length}日</b>`,
+      `遊べる日：本場（${hhmm(rthHours()[0])}–${hhmm(rthHours()[1])} ET） <b>${ss.rth.length}日</b> ／ 先物の1日 <b>${ss.globex.length}日</b>`,
     ];
     if (merged) lines.push(`保存してあったデータにつなげました（今回のファイルは ${r.bars.length.toLocaleString()}本）`);
     if (i.aggregated) lines.push(`${i.interval / 60}分足だったので、5分足にまとめました。`);
@@ -1258,7 +1314,7 @@
     if (i.skipped) lines.push(`<span class="warn">読み取れなかった行が ${i.skipped}行あり、飛ばしました。</span>`);
     if (!i.hadVolume) lines.push('<span class="warn">出来高の列がないので、VWAP は単純平均になります。</span>');
     if (!ss.rth.length && !ss.globex.length) {
-      lines.push('<span class="warn">ただし、1日分そろった日がありません（米国本場の 9:30〜16:00 ET がそろっている日が必要です）。もっと長い期間を書き出してください。</span>');
+      lines.push('<span class="warn">ただし、1日分そろった日がありません（設定の「本場の時間」の足がそろっている日が必要です）。もっと長い期間を書き出してください。</span>');
       showImport(lines.join('<br>'), 'err');
       return;
     }
