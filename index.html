@@ -116,7 +116,7 @@
       </div>
       <div style="margin-top:8px">
         <div class="row"><span>速度</span><b id="speedLabel"></b></div>
-        <input id="speed" type="range" min="0" max="9" step="1" value="4">
+        <input id="speed" type="range" min="0" max="9" step="1" value="0">
       </div>
       <label style="margin-top:6px"><input type="checkbox" id="smoothOn"> 足の途中も動かす</label>
       <div class="ctrl" style="margin-top:6px">
@@ -376,7 +376,7 @@
 
   // ---------- 設定 ----------
   const DEFAULTS = {
-    speed: 4, qty: 1, fee: 0.5, mode: 'rth', hideDate: true, smooth: true, bgm: true, bgmVol: 50, se: true,
+    speed: 0, qty: 1, fee: 0.5, mode: 'rth', hideDate: true, smooth: true, bgm: true, bgmVol: 50, se: true,
     sma: [{ on: false, period: 20 }, { on: true, period: 50 }, { on: true, period: 200 }],
     bb: { on: true, period: 20, mid: true, s1: true, s2: false, s3: false },
     vwap: true,
