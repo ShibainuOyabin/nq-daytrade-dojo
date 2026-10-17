@@ -6,3 +6,7 @@ __pycache__/
 data/
 fetch_data.py
 start.bat
+
+# カウンター（Cloudflare Worker）の作業ファイル
+counter/.wrangler/
+counter/node_modules/

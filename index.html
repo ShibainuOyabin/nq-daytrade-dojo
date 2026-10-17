@@ -95,6 +95,7 @@
   <span id="clock">--:-- JST</span>
   <span id="progress" class="small"></span>
   <span style="flex:1"></span>
+  <span id="visitLabel" class="small" title="このページが開かれた回数（日本時間の日ごと）"></span>
   <span id="dataLabel"></span>
   <button id="btnData">データ</button>
   <button id="btnNew">新しい日を始める</button>
@@ -225,7 +226,7 @@
 <dialog id="dataDlg">
   <h2>遊ぶためのデータを用意する</h2>
   <p style="margin:0">このゲームは、<b>あなたが用意した5分足のCSVファイル</b>を1本ずつ再生して遊びます。値段のデータはゲームに入っていません。</p>
-  <div class="note">🔒 読み込んだファイルは<b>このブラウザの中だけ</b>で使います。どこにも送信・アップロードされません。次に開いた時も、このブラウザに保存されたデータで続けて遊べます。</div>
+  <div class="note">🔒 読み込んだファイルは<b>このブラウザの中だけ</b>で使います。どこにも送信・アップロードされません。次に開いた時も、このブラウザに保存されたデータで続けて遊べます。<br><span class="small">（公開ページを開いた回数だけは数えています。送るのは「開いた」という合図だけで、CSVの中身や成績は送りません）</span></div>
   <div class="small" id="dataNow"></div>
 
   <h3><span class="step">1</span>まずは試してみる（ファイルがなくてもOK）</h3>
@@ -1366,6 +1367,20 @@
   };
   $('dataClose').onclick = () => $('dataDlg').close();
   $('btnData').onclick = openData;
+
+  // ---------- 開いた回数のカウンター ----------
+  // 公開ページで開いた時だけ 1 回数える（ローカル版は数えずに表示だけ）。送るのは「開いた」という合図だけ
+  const COUNTER_URL = 'https://dojo-counter.shibainuoyabin.workers.dev';
+  (async () => {
+    if (!COUNTER_URL) return;
+    const count = location.hostname === 'shibainuoyabin.github.io';
+    try {
+      const r = await fetch(COUNTER_URL + (count ? '/hit' : '/stats'), { method: count ? 'POST' : 'GET' });
+      if (!r.ok) return;
+      const c = await r.json(), f = v => Number(v).toLocaleString('ja-JP');
+      $('visitLabel').textContent = `👀 累計 ${f(c.total)} ／ 昨日 ${f(c.yesterday)} ／ 今日 ${f(c.today)}`;
+    } catch (e) { /* 数えられなくてもゲームはそのまま遊べる */ }
+  })();
 
   // ---------- 初期表示 ----------
   // 前回使ったデータ → このPCのデータ → 保存してあるCSV の順に探す。なければ取り込み画面を出す

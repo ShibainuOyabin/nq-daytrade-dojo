@@ -1,0 +1,9 @@
+name = "dojo-counter"
+main = "worker.js"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "dojo-counter"
+database_id = "9f3647fa-ae6c-4c84-87a0-f2a277b20f9a"
