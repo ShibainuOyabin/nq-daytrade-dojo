@@ -1,0 +1,1332 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ナス先デイトレ道場</title>
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<script src="dataio.js"></script>
+<!-- 自分のPCで遊ぶ時だけある任意のファイル（公開版には置かない） -->
+<script src="data/nq_5m.js"></script>
+<style>
+  :root {
+    --bg: #0f1218; --panel: #171b23; --line: #2a303c; --text: #e6e9ef; --muted: #8a93a6;
+    --up: #26a69a; --down: #ef5350; --accent: #4c8dff;
+    color-scheme: dark; /* スクロールバーや入力欄も暗い色にする */
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, "Segoe UI", "Hiragino Sans", "Yu Gothic UI", sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; padding: 8px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { font-size: 16px; margin: 0; }
+  #dayLabel { color: var(--muted); }
+  #clock { font-variant-numeric: tabular-nums; }
+  main { display: grid; grid-template-columns: 1fr 300px; height: calc(100vh - 45px); }
+  #chart { min-height: 300px; position: relative; }
+  /* Pine「Intraday Status Panel」と同じ見た目の判定パネル */
+  #statusPanel { position: absolute; left: 2%; bottom: calc(5% + 28px); z-index: 3; pointer-events: none; border-collapse: separate; border-spacing: 1px; width: auto; font-variant-numeric: tabular-nums; }
+  #statusPanel td, #statusPanel th { border: none; padding: 3px 8px; text-align: center; white-space: nowrap; font-weight: 400; }
+  #statusPanel th { background: rgba(120,123,134,.5); color: #fff; }
+  #statusPanel td { background: rgba(0,0,0,.8); color: #fff; }
+  #statusPanel td.item { text-align: left; }
+  #statusPanel td.s1 { color: #00e676; } #statusPanel td.s0 { color: #c0c0c0; } #statusPanel td.s-1 { color: #ff5252; }
+  #statusPanel td.j1 { background: rgba(76,175,80,.9); } #statusPanel td.j0 { background: rgba(120,123,134,.7); } #statusPanel td.j-1 { background: rgba(242,54,69,.9); }
+  aside { border-left: 1px solid var(--line); background: var(--panel); padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+  .box { border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+  .box h2 { font-size: 12px; color: var(--muted); margin: 0 0 8px; font-weight: 600; letter-spacing: .05em; }
+  .row { display: flex; justify-content: space-between; gap: 8px; font-variant-numeric: tabular-nums; }
+  .row b { font-weight: 600; }
+  .pos { color: var(--up); } .neg { color: var(--down); }
+  button { font: inherit; color: var(--text); background: #232938; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button:disabled { opacity: .4; cursor: default; }
+  .trade { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  #btnLong { background: #1d4d47; } #btnShort { background: #5a2626; }
+  .ctrl { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  input[type=range] { width: 100%; }
+  input[type=number], select { font: inherit; color: var(--text); background: #0f1218; border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; width: 70px; }
+  select { width: auto; }
+  label { display: flex; align-items: center; gap: 6px; }
+  .grid2 { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; }
+  .small { font-size: 12px; color: var(--muted); }
+  .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+  dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 20px; max-width: 640px; width: calc(100% - 32px); }
+  dialog::backdrop { background: rgba(0,0,0,.6); }
+  dialog h2 { margin-top: 0; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: 13px; }
+  th, td { border-bottom: 1px solid var(--line); padding: 4px 6px; text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  .big { font-size: 28px; font-weight: 700; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0; }
+  .stats div { background: #0f1218; border-radius: 6px; padding: 8px; }
+  .stats span { display: block; font-size: 12px; color: var(--muted); }
+  /* データの取り込み画面 */
+  #dataDlg { max-width: 780px; }
+  #dataDlg h3 { font-size: 15px; margin: 20px 0 6px; display: flex; align-items: center; }
+  #dataDlg ol { margin: 6px 0; padding-left: 22px; } #dataDlg li { margin: 4px 0; }
+  #dataDlg details { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin: 8px 0; }
+  #dataDlg summary { cursor: pointer; font-weight: 600; }
+  #dataDlg pre { background: #0f1218; border: 1px solid var(--line); border-radius: 6px; padding: 8px; overflow-x: auto; font-size: 12px; margin: 6px 0; }
+  #dataDlg table td, #dataDlg table th { text-align: left; vertical-align: top; }
+  #dataDlg code { background: #0f1218; padding: 1px 4px; border-radius: 3px; }
+  .step { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 12px; margin-right: 8px; }
+  .note { background: #1b2230; border-left: 3px solid var(--accent); padding: 8px 10px; border-radius: 4px; font-size: 13px; margin: 8px 0; }
+  #drop { border: 2px dashed var(--line); border-radius: 10px; padding: 22px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; }
+  #drop.over, #drop:hover { border-color: var(--accent); background: #1b2230; }
+  #importResult { margin-top: 10px; }
+  #importResult .ok { border-left: 3px solid var(--up); background: #15241f; padding: 8px 10px; border-radius: 4px; }
+  #importResult .err { border-left: 3px solid var(--down); background: #2a1719; padding: 8px 10px; border-radius: 4px; }
+  #importResult .warn { color: #ffcc80; }
+  #dataLabel { font-size: 12px; color: var(--muted); }
+  @media (max-width: 800px) {
+    main { grid-template-columns: 1fr; height: auto; }
+    #chart { height: 60vh; }
+    aside { border-left: none; border-top: 1px solid var(--line); }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>ナス先デイトレ道場</h1>
+  <span id="dayLabel">-</span>
+  <span id="clock">--:-- JST</span>
+  <span id="progress" class="small"></span>
+  <span style="flex:1"></span>
+  <span id="dataLabel"></span>
+  <button id="btnData">データ</button>
+  <button id="btnNew">新しい日を始める</button>
+</header>
+<main>
+  <div id="chart">
+    <table id="statusPanel" hidden>
+      <thead><tr><th>項目</th><th>状態</th><th>判定</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <aside>
+    <div class="box">
+      <h2>再生</h2>
+      <div class="ctrl">
+        <button id="btnPlay" style="flex:1">▶ 再生 (Space)</button>
+        <button id="btnStep">1本送り (→)</button>
+      </div>
+      <div style="margin-top:8px">
+        <div class="row"><span>速度</span><b id="speedLabel"></b></div>
+        <input id="speed" type="range" min="0" max="9" step="1" value="4">
+      </div>
+      <label style="margin-top:6px"><input type="checkbox" id="smoothOn"> 足の途中も動かす</label>
+      <div class="ctrl" style="margin-top:6px">
+        <label><input type="checkbox" id="bgmOn"> BGM（再生中）</label>
+        <input id="bgmVol" type="range" min="0" max="100" step="1" style="flex:1;width:auto" aria-label="BGMの音量">
+      </div>
+    </div>
+
+    <div class="box">
+      <h2>売買（今の値で約定）</h2>
+      <div class="trade">
+        <button id="btnShort">ショート (S)</button>
+        <button id="btnLong">ロング (B)</button>
+        <button id="btnFlat">決済 (X)</button>
+        <button id="btnRev">ドテン (R)</button>
+      </div>
+      <div class="ctrl" style="margin-top:8px">
+        <label>枚数 <input id="qty" type="number" min="1" max="50" value="1"></label>
+        <span class="small" id="instLabel"></span>
+        <label><input type="checkbox" id="seOn"> 効果音</label>
+      </div>
+    </div>
+
+    <div class="box">
+      <h2>口座</h2>
+      <div class="row"><span>建玉</span><b id="posLabel">なし</b></div>
+      <div class="row"><span>平均価格</span><b id="avgLabel">-</b></div>
+      <div class="row"><span>現在値</span><b id="lastLabel">-</b></div>
+      <div class="row"><span>含み損益</span><b id="openPnl">$0.00</b></div>
+      <div class="row"><span>確定損益</span><b id="realPnl">$0.00</b></div>
+      <div class="row"><span>手数料計</span><b id="feeLabel">$0.00</b></div>
+      <div class="row"><span>合計</span><b id="totalPnl">$0.00</b></div>
+    </div>
+
+    <div class="box">
+      <h2>成績（累計）</h2>
+      <div class="row"><span>遊んだ日数</span><b id="cDays">0日</b></div>
+      <div class="row"><span>累計損益</span><b id="cPnl">$0.00</b></div>
+      <div class="row"><span>勝ち日 / 負け日</span><b id="cWL">-</b></div>
+      <div class="row"><span>1日平均</span><b id="cAvg">-</b></div>
+      <div class="row"><span>トレード勝率</span><b id="cWin">-</b></div>
+      <div class="ctrl" style="margin-top:8px">
+        <button id="btnHist" style="flex:1">履歴を見る</button>
+        <button id="btnHistReset">リセット</button>
+      </div>
+    </div>
+
+    <div class="box">
+      <h2 style="display:flex;justify-content:space-between;align-items:center">インジケーター <button id="indReset" style="padding:2px 8px;font-size:11px">初期設定に戻す</button></h2>
+      <div class="grid2" id="smaRows"></div>
+      <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
+      <div class="grid2">
+        <label><input type="checkbox" id="bbOn"> ボリンジャー</label>
+        <label>期間 <input id="bbPeriod" type="number" min="2" max="500"></label>
+      </div>
+      <div class="ctrl" style="margin-top:6px">
+        <label><input type="checkbox" id="bbMid"> 中心線</label>
+        <label><input type="checkbox" id="bb1"> ±1σ</label>
+        <label><input type="checkbox" id="bb2"> ±2σ</label>
+        <label><input type="checkbox" id="bb3"> ±3σ</label>
+      </div>
+      <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
+      <label><input type="checkbox" id="vwapOn"> VWAP <span class="sw" style="background:#ff4fd8"></span> <span class="small">時間帯の始まりでリセット</span></label>
+    </div>
+
+    <div class="box">
+      <h2>ステータスパネル（左下）</h2>
+      <div class="grid2">
+        <label style="grid-column:1/3"><input type="checkbox" id="spOn"> 表示する</label>
+        <span>MAの期間 (SMA)</span><input id="spMaLen" type="number" min="1" max="1000">
+        <span>傾きの比較本数</span><input id="spSlopeBars" type="number" min="1" max="100">
+        <span>傾きの横ばい幅</span><label><input id="spSlopeTh" type="number" min="0" step="0.01"> %</label>
+        <span>価格位置の中立幅</span><label><input id="spPosBand" type="number" min="0" step="0.01"> %</label>
+        <span>文字サイズ</span>
+        <select id="spSize"><option>極小</option><option>小</option><option>中</option><option>大</option><option>特大</option></select>
+      </div>
+      <div class="small" style="margin-top:6px">VWAPと日足の始値は、選んだ時間帯の始まりが基準</div>
+    </div>
+
+    <div class="box">
+      <h2>設定</h2>
+      <div class="grid2">
+        <span>銘柄</span>
+        <select id="instSel">
+          <option value="MNQ">マイクロ・ナスダック (MNQ) 1pt = $2</option>
+          <option value="NQ">E-mini ナスダック (NQ) 1pt = $20</option>
+          <option value="MES">マイクロ S&amp;P500 (MES) 1pt = $5</option>
+          <option value="ES">E-mini S&amp;P500 (ES) 1pt = $50</option>
+          <option value="custom">その他（自分で入力）</option>
+        </select>
+        <span class="instCustom">1pt の価値</span><label class="instCustom">$ <input id="instPv" type="number" min="0" step="0.01"></label>
+        <span class="instCustom">呼び値（刻み）</span><input class="instCustom" id="instTick" type="number" min="0" step="0.0001">
+        <span>手数料</span><label><input id="fee" type="number" min="0" step="0.05"> $/枚・片道</label>
+      </div>
+    </div>
+    <div class="small">キー: B ロング / S ショート / X 決済 / R ドテン / Space 再生・停止 / → 1本送り</div>
+  </aside>
+</main>
+
+<dialog id="dataDlg">
+  <h2>遊ぶためのデータを用意する</h2>
+  <p style="margin:0">このゲームは、<b>あなたが用意した5分足のCSVファイル</b>を1本ずつ再生して遊びます。値段のデータはゲームに入っていません。</p>
+  <div class="note">🔒 読み込んだファイルは<b>このブラウザの中だけ</b>で使います。どこにも送信・アップロードされません。次に開いた時も、このブラウザに保存されたデータで続けて遊べます。</div>
+  <div class="small" id="dataNow"></div>
+
+  <h3><span class="step">1</span>まずは試してみる（ファイルがなくてもOK）</h3>
+  <p style="margin:0 0 6px">架空の値動きで作ったサンプルで、すぐに遊び方を試せます。実際の相場ではありません。</p>
+  <button id="btnSample">サンプル（架空の値動き）で遊ぶ</button>
+
+  <h3><span class="step">2</span>CSVファイルを用意する</h3>
+  <p style="margin:0">チャートのサービスや証券会社のツールから、<b>5分足（または1分足）</b>のデータをCSVで書き出します。</p>
+  <details open>
+    <summary>TradingView で書き出す手順（例）</summary>
+    <ol>
+      <li>TradingView でチャートを開き、遊びたい銘柄を表示します（例：<code>MNQ1!</code>、<code>NQ1!</code>、<code>ES1!</code>）。</li>
+      <li>時間足を <b>5分</b> にします。<span class="small">（1分・2分・3分足でもOK。ゲームが自動で5分足にまとめます）</span></li>
+      <li>チャートを<b>左へスクロール</b>して、遊びたい日まで過去の足を表示させます。<span class="small">書き出されるのは、チャートに読み込まれている足だけです。</span></li>
+      <li>画面上部のチャートレイアウト名の横のメニュー（∨）から、<b>「チャートデータをエクスポート」</b>を選びます。</li>
+      <li>「時間の形式」は <b>ISO 時間</b> か <b>UNIX タイムスタンプ</b> を選ぶのがおすすめです（時刻のずれが起きません）。</li>
+      <li>書き出されたCSVファイルを、下の「3」で読み込みます。</li>
+    </ol>
+    <div class="small">※ メニューの名前や場所、書き出せるかどうかは、TradingView の版やプランによって違うことがあります。ほかのサービスや証券会社のツールから書き出したCSVでも使えます。</div>
+  </details>
+  <details>
+    <summary>使えるCSVの形（自分で作る・ほかのツールから書き出す場合）</summary>
+    <p style="margin:6px 0">1行目に列名、2行目から1行に1本の足を書きます。区切りはカンマ・セミコロン・タブのどれでも大丈夫です。</p>
+<pre>time,open,high,low,close,volume
+2026-08-07T09:30:00-04:00,29805.00,29822.75,29790.25,29814.75,5321
+2026-08-07T09:35:00-04:00,29814.75,29830.00,29801.50,29826.25,4410</pre>
+    <table>
+      <tr><th>中身</th><th>使える列名の例</th></tr>
+      <tr><td>時刻（必須）</td><td><code>time</code> <code>datetime</code> <code>timestamp</code> <code>日時</code>、または <code>date</code>（日付）＋ <code>time</code>（時刻）の2列</td></tr>
+      <tr><td>始値・高値・安値・終値（必須）</td><td><code>open</code> <code>high</code> <code>low</code> <code>close</code>、または <code>始値</code> <code>高値</code> <code>安値</code> <code>終値</code></td></tr>
+      <tr><td>出来高（なくても可）</td><td><code>volume</code> <code>vol</code> <code>出来高</code>　<span class="small">ないと VWAP は単純平均になります</span></td></tr>
+    </table>
+    <p style="margin:8px 0 4px">時刻は次のどの書き方でも読めます。</p>
+    <table>
+      <tr><td>UNIX 時間（秒・ミリ秒）</td><td><code>1786109400</code></td></tr>
+      <tr><td>タイムゾーン付き</td><td><code>2026-08-07T09:30:00-04:00</code>、<code>2026-08-07T13:30:00Z</code></td></tr>
+      <tr><td>タイムゾーンなし</td><td><code>2026-08-07 09:30</code>、<code>2026/08/07 9:30:00</code>、<code>2026.08.07 09:30</code>、<code>08/07/2026 09:30</code><br><span class="small">→ どこの時間かを、下の「タイムゾーンのない時刻は」で選んでください。</span></td></tr>
+    </table>
+  </details>
+
+  <h3><span class="step">3</span>CSVファイルを読み込む</h3>
+  <div id="drop" tabindex="0" role="button" aria-label="CSVファイルを選ぶ">
+    <div style="font-size:15px">ここに CSV ファイルを<b>ドラッグ＆ドロップ</b></div>
+    <div class="small" style="margin-top:4px">または、ここをクリックしてファイルを選ぶ</div>
+  </div>
+  <input type="file" id="fileInput" accept=".csv,.txt,text/csv" hidden>
+  <div class="grid2" style="margin-top:10px">
+    <span>タイムゾーンのない時刻は</span>
+    <select id="tzSel">
+      <option value="America/New_York">米国東部時間（ニューヨーク）</option>
+      <option value="America/Chicago">米国中部時間（シカゴ・CME の取引所時間）</option>
+      <option value="Asia/Tokyo">日本時間</option>
+      <option value="UTC">UTC（世界標準時）</option>
+    </select>
+    <span></span>
+    <label><input type="checkbox" id="appendData"> いま保存してあるデータに<b>つなげる</b>（期間を足していく時）</label>
+  </div>
+  <div id="importResult"></div>
+
+  <div class="ctrl" style="justify-content:space-between;margin-top:16px">
+    <button id="btnClearData">保存したデータを消す</button>
+    <span class="ctrl">
+      <button id="dataClose">閉じる</button>
+      <button id="dataUse" style="background:var(--accent);border-color:var(--accent)" disabled>このデータで遊ぶ</button>
+    </span>
+  </div>
+  <p class="small" style="margin-bottom:0">データは、入手元（TradingView・証券会社など）の利用規約の範囲で使ってください。このゲームは練習用で、投資の助言ではありません。</p>
+</dialog>
+
+<dialog id="startDlg">
+  <h2>新しい日を始める</h2>
+  <div class="grid2">
+    <span>時間帯</span>
+    <select id="modeSel">
+      <option value="rth">米国本場のみ（日本時間 22:30–翌5:00、冬時間は23:30–翌6:00 / 78本）</option>
+      <option value="globex">先物の1日（日本時間 7:00–翌6:00、冬時間は8:00–翌7:00）</option>
+    </select>
+    <span>日付</span>
+    <select id="daySel"></select>
+    <span></span>
+    <label><input type="checkbox" id="hideDate" checked> ランダムの時は終わるまで日付を伏せる</label>
+  </div>
+  <p class="small" id="dataInfo"></p>
+  <div class="ctrl" style="justify-content:flex-end">
+    <button id="startCancel">閉じる</button>
+    <button id="startGo" style="background:var(--accent);border-color:var(--accent)">開始</button>
+  </div>
+</dialog>
+
+<dialog id="resultDlg">
+  <h2 id="resultTitle">本日の結果</h2>
+  <div class="big" id="resultPnl"></div>
+  <div class="small" id="resultCum" style="margin-top:4px"></div>
+  <div class="stats">
+    <div><span>トレード数</span><b id="rCount"></b></div>
+    <div><span>勝率</span><b id="rWin"></b></div>
+    <div><span>最大ドローダウン</span><b id="rDD"></b></div>
+    <div><span>手数料</span><b id="rFee"></b></div>
+  </div>
+  <div style="max-height:300px;overflow:auto">
+    <table>
+      <thead><tr><th>決済時刻</th><th>方向</th><th>枚数</th><th>建値</th><th>決済</th><th>pt</th><th>損益($)</th></tr></thead>
+      <tbody id="rTrades"></tbody>
+    </table>
+  </div>
+  <div class="ctrl" style="justify-content:flex-end;margin-top:12px">
+    <button id="resultClose">閉じる</button>
+    <button id="resultNext" style="background:var(--accent);border-color:var(--accent)">次の日へ</button>
+  </div>
+</dialog>
+
+<dialog id="histDlg">
+  <h2>成績の履歴</h2>
+  <div class="small" id="histSummary"></div>
+  <div style="max-height:400px;overflow:auto;margin-top:8px">
+    <table>
+      <thead><tr><th>遊んだ日時</th><th>取引日</th><th>時間帯</th><th>トレード</th><th>勝率</th><th>最大DD</th><th>損益($)</th><th>累計($)</th></tr></thead>
+      <tbody id="histRows"></tbody>
+    </table>
+  </div>
+  <div class="ctrl" style="justify-content:flex-end;margin-top:12px">
+    <button id="histClose">閉じる</button>
+  </div>
+</dialog>
+
+<script>
+(() => {
+  'use strict';
+  // 銘柄ごとの 1pt の価値（ドル）と呼び値
+  const INSTRUMENTS = {
+    MNQ: { pv: 2, tick: 0.25, label: 'MNQ' }, NQ: { pv: 20, tick: 0.25, label: 'NQ' },
+    MES: { pv: 5, tick: 0.25, label: 'MES' }, ES: { pv: 50, tick: 0.25, label: 'ES' },
+  };
+  const PRE_BARS = 120;        // 開始前に見せる本数
+  const SPEEDS = [5000, 3000, 2000, 1500, 1000, 700, 500, 300, 150, 50]; // ms/本
+  const SMA_COLORS = ['#ff9800', '#2979ff', '#ff1744'];
+  const BB_COLORS = { mid: '#00c853', 1: '#81c784', 2: '#64b5f6', 3: '#f06292' };
+
+  const $ = id => document.getElementById(id);
+  const fmt$ = v => (v < 0 ? '-$' : '$') + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtP = v => v.toFixed(2);
+  const signCls = (el, v) => { el.classList.toggle('pos', v > 0); el.classList.toggle('neg', v < 0); };
+
+  // ---------- 設定 ----------
+  const DEFAULTS = {
+    speed: 4, qty: 1, fee: 0.5, mode: 'rth', hideDate: true, smooth: true, bgm: true, bgmVol: 50, se: true,
+    sma: [{ on: false, period: 20 }, { on: true, period: 50 }, { on: true, period: 200 }],
+    bb: { on: true, period: 20, mid: true, s1: true, s2: false, s3: false },
+    vwap: true,
+    panel: { on: true, maLen: 20, slopeBars: 3, slopeTh: 0.02, posBand: 0.05, size: '大' },
+    inst: { kind: 'MNQ', pv: 2, tick: 0.25 },
+    tz: 'America/New_York', lastData: '',
+  };
+  let cfg;
+  const fresh = () => JSON.parse(JSON.stringify(DEFAULTS)); // 初期値を書き換えないよう毎回複製する
+  try { cfg = Object.assign(fresh(), JSON.parse(localStorage.getItem('nqdojo-cfg') || '{}')); }
+  catch (e) { cfg = fresh(); }
+  cfg.bb = Object.assign({}, DEFAULTS.bb, cfg.bb);
+  cfg.panel = Object.assign({}, DEFAULTS.panel, cfg.panel);
+  cfg.inst = Object.assign({}, DEFAULTS.inst, cfg.inst);
+  const pointValue = () => cfg.inst.kind === 'custom' ? cfg.inst.pv : INSTRUMENTS[cfg.inst.kind].pv;
+  const tickSize = () => (cfg.inst.kind === 'custom' ? cfg.inst.tick : INSTRUMENTS[cfg.inst.kind].tick) || 0.01;
+  if (!Array.isArray(cfg.sma) || cfg.sma.length !== 3) cfg.sma = fresh().sma;
+  const saveCfg = () => { try { localStorage.setItem('nqdojo-cfg', JSON.stringify(cfg)); } catch (e) {} };
+
+  // ---------- BGM（Web Audio でその場で合成するミニマルなループ） ----------
+  const BGM = (() => {
+    const BPM = 108, STEP = 60 / BPM / 4;             // 16分音符1つの長さ
+    const CHORDS = [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]]; // Am F C G
+    const ARP = [0, 1, 2, 1, 2, 0, 1, 2];               // 8分ごとの分散和音
+    const BASS_STEPS = [0, 6, 10];
+    const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+    let ctx = null, master, out, delayIn, noise, timer = 0, stopTimer = 0, step = 0, nextTime = 0, running = false, vol = 0.5;
+
+    function init() {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return false;
+      ctx = new AC();
+      master = ctx.createGain(); master.gain.value = 0;
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 5000;
+      const comp = ctx.createDynamicsCompressor();
+      master.connect(lp).connect(comp).connect(ctx.destination);
+      out = ctx.createGain(); out.gain.value = 0.6; out.connect(master);
+      // 付点8分のディレイで少しだけ空間を出す
+      delayIn = ctx.createGain(); delayIn.gain.value = 0.28;
+      const dl = ctx.createDelay(1); dl.delayTime.value = STEP * 3;
+      const fb = ctx.createGain(); fb.gain.value = 0.32;
+      const dlp = ctx.createBiquadFilter(); dlp.type = 'lowpass'; dlp.frequency.value = 2500;
+      delayIn.connect(dl); dl.connect(dlp).connect(fb).connect(dl); dlp.connect(out);
+      noise = ctx.createBuffer(1, ctx.sampleRate * 0.2, ctx.sampleRate);
+      const ch = noise.getChannelData(0);
+      for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1;
+      return true;
+    }
+
+    function env(g, t, peak, decay) {
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(peak, t + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + decay);
+    }
+    function kick(t) {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.12);
+      env(g, t, 0.8, 0.32); o.connect(g).connect(out); o.start(t); o.stop(t + 0.35);
+    }
+    function hat(t, v) {
+      const s = ctx.createBufferSource(), hp = ctx.createBiquadFilter(), g = ctx.createGain();
+      s.buffer = noise; hp.type = 'highpass'; hp.frequency.value = 7500;
+      env(g, t, v, 0.05); s.connect(hp).connect(g).connect(out); s.start(t); s.stop(t + 0.08);
+    }
+    function bass(t, m) {
+      const o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+      o.type = 'triangle'; o.frequency.value = mtof(m - 12);
+      f.type = 'lowpass'; f.frequency.value = 600;
+      env(g, t, 0.35, STEP * 3); o.connect(f).connect(g).connect(out); o.start(t); o.stop(t + STEP * 3 + 0.05);
+    }
+    function pluck(t, m) {
+      const o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+      o.type = 'square'; o.frequency.value = mtof(m);
+      f.type = 'lowpass'; f.frequency.setValueAtTime(2400, t); f.frequency.exponentialRampToValueAtTime(500, t + 0.2);
+      env(g, t, 0.07, 0.28); o.connect(f).connect(g); g.connect(out); g.connect(delayIn);
+      o.start(t); o.stop(t + 0.3);
+    }
+    function playStep(s, t) {
+      const i = s % 16, chord = CHORDS[Math.floor(s / 16) % CHORDS.length];
+      if (i % 4 === 0) kick(t);
+      if (i % 4 === 2) hat(t, 0.18); else if (i % 2 === 1) hat(t, 0.05);
+      if (BASS_STEPS.includes(i)) bass(t, chord[0]);
+      if (i % 2 === 0) pluck(t, chord[ARP[i / 2]] + 12);
+    }
+    function schedule() {
+      while (nextTime < ctx.currentTime + 0.12) {
+        playStep(step, nextTime);
+        nextTime += STEP; step = (step + 1) % 64;
+      }
+    }
+    return {
+      start() {
+        if (!ctx && !init()) return;
+        ctx.resume();
+        clearTimeout(stopTimer);
+        if (!running) {
+          running = true;
+          nextTime = ctx.currentTime + 0.05;
+          timer = setInterval(schedule, 25);
+          schedule();
+        }
+        master.gain.cancelScheduledValues(ctx.currentTime);
+        master.gain.setTargetAtTime(vol, ctx.currentTime, 0.15);
+      },
+      stop() {
+        if (!ctx || !running) return;
+        master.gain.cancelScheduledValues(ctx.currentTime);
+        master.gain.setTargetAtTime(0, ctx.currentTime, 0.08);
+        clearTimeout(stopTimer);
+        stopTimer = setTimeout(() => { running = false; clearInterval(timer); }, 400);
+      },
+      setVolume(v) {
+        vol = v;
+        if (ctx && running) master.gain.setTargetAtTime(v, ctx.currentTime, 0.05);
+      },
+      // 売買の「トン」。BGM の音量・再生状態とは別に、そのまま出力へ鳴らす
+      se(kind) {
+        if (!ctx && !init()) return;
+        ctx.resume();
+        const t = ctx.currentTime + 0.01;
+        const tone = (freq, at, peak) => {
+          const o = ctx.createOscillator(), g = ctx.createGain();
+          o.type = 'sine';
+          o.frequency.setValueAtTime(freq * 1.5, at);
+          o.frequency.exponentialRampToValueAtTime(freq, at + 0.03);
+          g.gain.setValueAtTime(0.0001, at);
+          g.gain.exponentialRampToValueAtTime(peak, at + 0.004);
+          g.gain.exponentialRampToValueAtTime(0.0001, at + 0.16);
+          o.connect(g).connect(ctx.destination); o.start(at); o.stop(at + 0.2);
+        };
+        if (kind === 'long') tone(880, t, 0.3);
+        else if (kind === 'short') tone(440, t, 0.3);
+        else if (kind === 'flat') tone(660, t, 0.25);
+        else { tone(660, t, 0.25); tone(880, t + 0.08, 0.25); }
+      },
+      get running() { return running; },
+      get ctx() { return ctx; },
+    };
+  })();
+
+  // ---------- データ ----------
+  // dataset: { kind: 'local' | 'import' | 'sample', name, bars: [[UTC秒, 始, 高, 安, 終, 出来高], ...] }
+  // local は自分のPCの data/nq_5m.js、import は読み込んだCSV、sample は架空の値動き
+  const etFmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', hourCycle: 'h23',
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  });
+  const isoDay = ms => new Date(ms).toISOString().slice(0, 10);
+  const WD = ['日', '月', '火', '水', '木', '金', '土'];
+
+  const prepareBars = raw => raw.map(([t, o, h, l, c, v]) => {
+    const p = {};
+    for (const x of etFmt.formatToParts(new Date(t * 1000))) p[x.type] = +x.value;
+    const dayMs = Date.UTC(p.year, p.month - 1, p.day);
+    const hm = p.hour * 60 + p.minute;
+    // チャートは UTC 表示なので、日本時間（UTC+9、夏時間なし）の壁時計を UTC とみなして渡す
+    // 時間帯の判定（rth / globex）は ET のまま
+    const time = t + 9 * 3600;
+    const rth = hm >= 570 && hm < 960 ? isoDay(dayMs) : null;           // 9:30–16:00
+    const globex = p.hour === 17 ? null : isoDay(p.hour >= 18 ? dayMs + 86400000 : dayMs); // 前日18:00〜17:00
+    return { t, time, o, h, l, c, v, hm, rth, globex };
+  });
+
+  function buildSessions(list, key, minBars) {
+    const m = new Map();
+    list.forEach((b, i) => {
+      const k = b[key]; if (!k) return;
+      const s = m.get(k);
+      if (s) s.end = i; else m.set(k, { day: k, start: i, end: i });
+    });
+    return [...m.values()].filter(s => s.end - s.start + 1 >= minBars && s.start > 0).map((s, n) => Object.assign(s, { n }));
+  }
+  const sessionsOf = list => ({ rth: buildSessions(list, 'rth', 60), globex: buildSessions(list, 'globex', 200) });
+  let bars = [], SESSIONS = { rth: [], globex: [] }, dataset = null;
+
+  // ---------- チャート ----------
+  const chartEl = $('chart');
+  const chart = LightweightCharts.createChart(chartEl, {
+    autoSize: true,
+    layout: { background: { color: '#0f1218' }, textColor: '#c9ced8' },
+    grid: { vertLines: { color: '#1b2029' }, horzLines: { color: '#1b2029' } },
+    rightPriceScale: { borderColor: '#2a303c' },
+    timeScale: { borderColor: '#2a303c', timeVisible: true, secondsVisible: false, rightOffset: 8 },
+    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+  });
+  const candles = chart.addCandlestickSeries({
+    upColor: '#26a69a', downColor: '#ef5350', borderVisible: false, wickUpColor: '#26a69a', wickDownColor: '#ef5350',
+  });
+  const volume = chart.addHistogramSeries({ priceScaleId: 'vol', priceFormat: { type: 'volume' }, lastValueVisible: false, priceLineVisible: false });
+  chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+  candles.priceScale().applyOptions({ scaleMargins: { top: 0.05, bottom: 0.2 } });
+
+  const lineOpts = (color, width = 1, style = 0) => ({ color, lineWidth: width, lineStyle: style, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+  const smaSeries = SMA_COLORS.map(c => chart.addLineSeries(lineOpts(c, 2)));
+  const bbSeries = {
+    mid: chart.addLineSeries(lineOpts(BB_COLORS.mid, 3)),
+    u1: chart.addLineSeries(lineOpts(BB_COLORS[1])), l1: chart.addLineSeries(lineOpts(BB_COLORS[1])),
+    u2: chart.addLineSeries(lineOpts(BB_COLORS[2])), l2: chart.addLineSeries(lineOpts(BB_COLORS[2])),
+    u3: chart.addLineSeries(lineOpts(BB_COLORS[3])), l3: chart.addLineSeries(lineOpts(BB_COLORS[3])),
+  };
+  const vwapSeries = chart.addLineSeries(lineOpts('#ff4fd8', 2));
+  let entryLine = null;
+
+  function setTimeFormatting(hideDate) {
+    chart.applyOptions({
+      localization: {
+        timeFormatter: t => {
+          const d = new Date(t * 1000);
+          const hm = d.toISOString().slice(11, 16);
+          return hideDate ? hm : `${d.toISOString().slice(5, 10)} ${hm}`;
+        },
+      },
+      timeScale: {
+        tickMarkFormatter: (t, type) => {
+          const d = new Date(t * 1000);
+          if (type < 3) return hideDate ? '' : d.toISOString().slice(5, 10);
+          return d.toISOString().slice(11, 16);
+        },
+      },
+    });
+  }
+
+  // ---------- インジケーター（過去の足だけで計算するので先読みなし） ----------
+  let ind = {};
+  function computeIndicators() {
+    const n = bars.length;
+    const sma = cfg.sma.map(s => {
+      const out = new Array(n).fill(null), p = Math.max(1, s.period | 0);
+      let sum = 0;
+      for (let i = 0; i < n; i++) {
+        sum += bars[i].c; if (i >= p) sum -= bars[i - p].c;
+        if (i >= p - 1) out[i] = sum / p;
+      }
+      return out;
+    });
+    const p = Math.max(2, cfg.bb.period | 0);
+    const mid = new Array(n).fill(null), sd = new Array(n).fill(null);
+    let s1 = 0, s2 = 0;
+    for (let i = 0; i < n; i++) {
+      const c = bars[i].c; s1 += c; s2 += c * c;
+      if (i >= p) { const o = bars[i - p].c; s1 -= o; s2 -= o * o; }
+      if (i >= p - 1) { const m = s1 / p; mid[i] = m; sd[i] = Math.sqrt(Math.max(0, s2 / p - m * m)); }
+    }
+    // VWAP 用に、時間帯の始まりから i 本目までの累積(価格×出来高, 出来高)を持つ
+    const pvA = new Array(n).fill(0), vvA = new Array(n).fill(0), key = state.mode;
+    let pv = 0, vv = 0, cur = null;
+    for (let i = 0; i < n; i++) {
+      const b = bars[i], k = b[key];
+      if (!k) { cur = null; continue; }
+      if (k !== cur) { cur = k; pv = 0; vv = 0; }
+      pv += (b.h + b.l + b.c) / 3 * b.v; vv += b.v;
+      pvA[i] = pv; vvA[i] = vv;
+    }
+    ind = { sma, mid, sd, pvA, vvA };
+  }
+
+  const pt = (i, v) => ({ time: bars[i].time, value: v });
+  // bar は形成中の足（省略時は完成した足）。形成中は終値を今の値に置き換えて計算する
+  function indicatorPoints(i, bar = bars[i]) {
+    const out = {}, dc = bar.c - bars[i].c;
+    cfg.sma.forEach((s, j) => {
+      const v = ind.sma[j][i];
+      out['sma' + j] = s.on && v != null ? v + dc / Math.max(1, s.period | 0) : null;
+    });
+    const bb = cfg.bb, p = Math.max(2, bb.period | 0);
+    let m = ind.mid[i], d = ind.sd[i];
+    if (bb.on && m != null && dc !== 0) {
+      let s1 = bar.c, s2 = bar.c * bar.c;
+      for (let k = i - p + 1; k < i; k++) { const c = bars[k].c; s1 += c; s2 += c * c; }
+      m = s1 / p; d = Math.sqrt(Math.max(0, s2 / p - m * m));
+    }
+    const has = bb.on && m != null;
+    out.mid = has && bb.mid ? m : null;
+    for (const k of [1, 2, 3]) {
+      const on = has && bb['s' + k];
+      out['u' + k] = on ? m + k * d : null;
+      out['l' + k] = on ? m - k * d : null;
+    }
+    out.vwap = cfg.vwap ? vwapAt(i, bar) : null;
+    return out;
+  }
+
+  function vwapAt(i, bar = bars[i]) {
+    const key = bars[i][state.mode];
+    if (!key) return null;
+    const same = i > 0 && bars[i - 1][state.mode] === key;
+    const pv = (same ? ind.pvA[i - 1] : 0) + (bar.h + bar.l + bar.c) / 3 * bar.v;
+    const vv = (same ? ind.vvA[i - 1] : 0) + bar.v;
+    return vv > 0 ? pv / vv : bar.c;
+  }
+
+  // i 本目の SMA。last を渡すとその本の終値を last に置き換える（形成中の足用）
+  function smaAt(i, p, last = bars[i].c) {
+    if (i < p - 1) return null;
+    let s = last;
+    for (let k = i - p + 1; k < i; k++) s += bars[k].c;
+    return s / p;
+  }
+
+  // ---------- ステータスパネル（status_panel.pine の移植） ----------
+  const SP_SIZES = { '極小': 11, '小': 13, '中': 14, '大': 16, '特大': 20 };
+  const pctDiff = (price, ref) => ref == null ? null : (price - ref) / ref * 100;
+  const stateOf = (v, band) => v == null ? 0 : v > band ? 1 : v < -band ? -1 : 0;
+  const fmtPct = v => v == null ? '' : ` (${v >= 0 ? '+' : ''}${v.toFixed(2)}%)`;
+  const JUDGE = { 1: '買い優勢', 0: '中立', '-1': '売り優勢' };
+
+  function updateStatusPanel() {
+    const tbl = $('statusPanel'), P = cfg.panel;
+    tbl.hidden = !P.on || !state.session || state.drawn < 0;
+    if (tbl.hidden) return;
+    tbl.style.fontSize = (SP_SIZES[P.size] || 16) + 'px';
+    const i = showForming() ? state.idx : state.drawn;
+    const bar = i === state.idx ? partialBar(bars[i], state.frac) : bars[i];
+    const price = bar.c, len = Math.max(1, P.maLen | 0), sb = Math.max(1, P.slopeBars | 0);
+
+    const vwap = vwapAt(i, bar);
+    const ma = smaAt(i, len, price);
+    const maPrev = i - sb >= 0 ? smaAt(i - sb, len) : null;
+    const slope = ma != null && maPrev != null ? (ma - maPrev) / maPrev * 100 : null;
+    const s = state.session;
+    const dayOpen = i >= s.start ? bars[s.start].o : null;
+
+    const rows = [];
+    const vd = pctDiff(price, vwap), vs = stateOf(vd, P.posBand);
+    rows.push(['VWAP', vd == null ? '—' : (vs === 1 ? '上' : vs === -1 ? '下' : '付近') + fmtPct(vd), vs]);
+    const md = ma == null ? null : pctDiff(price, ma), ms = stateOf(md, P.posBand);
+    rows.push([`${len}MA`, md == null ? '—' : (ms === 1 ? '上' : ms === -1 ? '下' : '付近') + fmtPct(md), ms]);
+    const ss = stateOf(slope, P.slopeTh);
+    rows.push([`${len}MAの傾き`, slope == null ? '—' : (ss === 1 ? '↑ 上向き' : ss === -1 ? '↓ 下向き' : '→ 横ばい') + fmtPct(slope), ss]);
+    const dd = pctDiff(price, dayOpen), ds = stateOf(dd, P.posBand);
+    rows.push(['日足', dd == null ? '—' : (ds === 1 ? '陽線' : ds === -1 ? '陰線' : 'ほぼ同値') + fmtPct(dd), ds]);
+
+    const tb = tbl.tBodies[0];
+    if (tb.rows.length !== rows.length) {
+      tb.textContent = '';
+      for (let r = 0; r < rows.length; r++) {
+        const tr = tb.insertRow();
+        for (let c = 0; c < 3; c++) tr.insertCell();
+        tr.cells[0].className = 'item';
+      }
+    }
+    rows.forEach(([name, txt, st], r) => {
+      const c = tb.rows[r].cells;
+      c[0].textContent = name;
+      c[1].textContent = txt; c[1].className = 's' + st;
+      c[2].textContent = JUDGE[st]; c[2].className = 'j' + st;
+    });
+  }
+
+  // 5分足の中の値動きを「始値→安値→高値→終値」（陰線は 始値→高値→安値→終値）でなぞる
+  function partialBar(b, f) {
+    if (f >= 1) return b;
+    const pts = b.c >= b.o ? [b.o, b.l, b.h, b.c] : [b.o, b.h, b.l, b.c];
+    const segs = [0, 1, 2].map(k => Math.abs(pts[k + 1] - pts[k]));
+    const total = segs[0] + segs[1] + segs[2];
+    let hi = b.o, lo = b.o, price = b.o, dist = f * total;
+    for (let k = 0; k < 3 && total > 0; k++) {
+      if (dist >= segs[k]) { price = pts[k + 1]; dist -= segs[k]; }
+      else { price = pts[k] + (pts[k + 1] - pts[k]) * (dist / segs[k]); dist = -1; }
+      price = +(Math.round(price / tickSize()) * tickSize()).toFixed(6); // 呼び値の刻み
+      hi = Math.max(hi, price); lo = Math.min(lo, price);
+      if (dist < 0) break;
+    }
+    return { o: b.o, h: hi, l: lo, c: price, v: b.v * f };
+  }
+  const seriesByKey = () => ({
+    sma0: smaSeries[0], sma1: smaSeries[1], sma2: smaSeries[2],
+    mid: bbSeries.mid, u1: bbSeries.u1, l1: bbSeries.l1, u2: bbSeries.u2, l2: bbSeries.l2, u3: bbSeries.u3, l3: bbSeries.l3,
+    vwap: vwapSeries,
+  });
+
+  // ---------- ゲーム状態 ----------
+  const state = {
+    // idx: いま形成中（frac<1）または完成済み（frac=1）の足。drawn: チャートに出ている最後の足
+    mode: cfg.mode, session: null, from: 0, idx: -1, frac: 1, drawn: -1, price: 0,
+    playing: false, timer: 0, lastTs: null, done: true, hidden: false,
+    pos: 0, avg: 0, realized: 0, fees: 0, trades: [], markers: [], peak: 0, maxDD: 0,
+  };
+
+  const volColor = b => b.c >= b.o ? 'rgba(38,166,154,.4)' : 'rgba(239,83,80,.4)';
+  const showForming = () => state.frac >= 1 || cfg.smooth;
+
+  function renderAll() {
+    const from = state.from, to = showForming() ? state.idx : state.idx - 1;
+    const shown = [];
+    for (let i = from; i <= to; i++) shown.push(i === state.idx ? partialBar(bars[i], state.frac) : bars[i]);
+    candles.setData(shown.map((b, j) => ({ time: bars[from + j].time, open: b.o, high: b.h, low: b.l, close: b.c })));
+    volume.setData(shown.map((b, j) => ({ time: bars[from + j].time, value: b.v, color: volColor(b) })));
+    const data = {}, S = seriesByKey();
+    for (const k in S) data[k] = [];
+    shown.forEach((b, j) => {
+      const p = indicatorPoints(from + j, b);
+      for (const k in S) if (p[k] != null) data[k].push(pt(from + j, p[k]));
+    });
+    for (const k in S) S[k].setData(data[k]);
+    state.drawn = to;
+    candles.setMarkers(state.markers);
+  }
+
+  function drawBar(i, b) {
+    const time = bars[i].time;
+    candles.update({ time, open: b.o, high: b.h, low: b.l, close: b.c });
+    volume.update({ time, value: b.v, color: volColor(b) });
+    const p = indicatorPoints(i, b), S = seriesByKey();
+    for (const k in S) if (p[k] != null) S[k].update(pt(i, p[k]));
+    state.drawn = i;
+  }
+
+  // いまの足の状態を反映（値・チャート・口座）
+  function renderLive() {
+    const i = state.idx, b = partialBar(bars[i], state.frac);
+    if (showForming()) { drawBar(i, b); state.price = b.c; }
+    else state.price = bars[state.drawn].c;
+    if (i >= state.session.start) trackEquity();
+    updatePanel();
+  }
+
+  const inSession = () => state.session && state.drawn >= state.session.start && state.drawn <= state.session.end && !state.done;
+  const openPnl = () => state.pos ? (state.price - state.avg) * state.pos * pointValue() : 0;
+  // 足の中の経過も含めた今の時刻（日本時間）
+  const nowClock = () => {
+    const t = showForming() ? bars[state.idx].time + Math.floor(state.frac * 300) : bars[state.drawn].time + 300;
+    return new Date(t * 1000).toISOString().slice(11, 16);
+  };
+
+  function fill(delta, reason) {
+    if (!inSession() || delta === 0) return;
+    const b = bars[state.drawn], price = state.price, fee = Math.abs(delta) * cfg.fee;
+    state.fees += fee;
+    let remaining = delta;
+    if (state.pos !== 0 && Math.sign(state.pos) !== Math.sign(delta)) {
+      const closeQty = Math.min(Math.abs(state.pos), Math.abs(delta));
+      const side = Math.sign(state.pos);
+      const pts = (price - state.avg) * side;
+      const pnl = pts * closeQty * pointValue();
+      state.realized += pnl;
+      state.trades.push({ time: nowClock(), side: side > 0 ? 'ロング' : 'ショート', qty: closeQty, entry: state.avg, exit: price, pts, pnl });
+      state.pos += side * -closeQty;
+      remaining += side * closeQty;
+      if (state.pos === 0) state.avg = 0;
+    }
+    if (remaining !== 0) {
+      const newPos = state.pos + remaining;
+      state.avg = (state.avg * Math.abs(state.pos) + price * Math.abs(remaining)) / Math.abs(newPos);
+      state.pos = newPos;
+    }
+    const buy = delta > 0;
+    state.markers.push({
+      time: b.time, position: buy ? 'belowBar' : 'aboveBar', color: buy ? '#26a69a' : '#ef5350',
+      shape: buy ? 'arrowUp' : 'arrowDown', text: `${reason || (buy ? '買' : '売')} ${Math.abs(delta)}@${fmtP(price)}`,
+    });
+    candles.setMarkers(state.markers);
+    updateEntryLine();
+    updatePanel();
+  }
+
+  function updateEntryLine() {
+    if (entryLine) { candles.removePriceLine(entryLine); entryLine = null; }
+    if (state.pos) entryLine = candles.createPriceLine({ price: state.avg, color: state.pos > 0 ? '#26a69a' : '#ef5350', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: state.pos > 0 ? 'L' : 'S' });
+  }
+
+  function trackEquity() {
+    const eq = state.realized - state.fees + openPnl();
+    state.peak = Math.max(state.peak, eq);
+    state.maxDD = Math.max(state.maxDD, state.peak - eq);
+  }
+
+  function updatePanel() {
+    updateStatusPanel();
+    const b = state.session;
+    $('posLabel').textContent = state.pos ? `${state.pos > 0 ? 'ロング' : 'ショート'} ${Math.abs(state.pos)}枚` : 'なし';
+    $('posLabel').className = state.pos > 0 ? 'pos' : state.pos < 0 ? 'neg' : '';
+    $('avgLabel').textContent = state.pos ? fmtP(state.avg) : '-';
+    $('lastLabel').textContent = b ? fmtP(state.price) : '-';
+    const op = b ? openPnl() : 0, total = state.realized - state.fees + op;
+    $('openPnl').textContent = fmt$(op); signCls($('openPnl'), op);
+    $('realPnl').textContent = fmt$(state.realized); signCls($('realPnl'), state.realized);
+    $('feeLabel').textContent = fmt$(state.fees);
+    $('totalPnl').textContent = fmt$(total); signCls($('totalPnl'), total);
+    if (b) {
+      $('clock').textContent = `${nowClock()} JST`;
+      const s = state.session;
+      const n = Math.max(0, Math.min(state.drawn, s.end) - s.start + 1), all = s.end - s.start + 1;
+      $('progress').textContent = state.drawn < s.start ? '寄り付き前' : `${n} / ${all} 本`;
+    }
+    const can = inSession();
+    for (const id of ['btnLong', 'btnShort', 'btnFlat', 'btnRev']) $(id).disabled = !can;
+    $('btnFlat').disabled = !can || !state.pos;
+    $('btnRev').disabled = !can || !state.pos;
+    $('btnPlay').disabled = $('btnStep').disabled = state.done;
+    $('btnPlay').textContent = state.playing ? '❚❚ 停止 (Space)' : '▶ 再生 (Space)';
+  }
+
+  // ---------- 進行 ----------
+  // 足 d 本分だけ時間を進める（1.0 = 5分足1本）
+  function advance(d) {
+    while (d > 1e-9 && !state.done) {
+      if (state.frac >= 1) {
+        if (state.idx >= state.session.end) { finish(); return; }
+        state.idx++; state.frac = 0;
+      }
+      const take = Math.min(1 - state.frac, d);
+      state.frac += take; d -= take;
+      if (state.frac >= 1 - 1e-9) {
+        state.frac = 1;
+        renderLive();
+        if (state.idx >= state.session.end) { finish(); return; }
+      }
+    }
+    if (!state.done) renderLive();
+  }
+
+  // 1本送り: 形成中の足を完成させる。完成済みなら次の足を1本まるごと進める
+  const step = () => advance(state.frac >= 1 ? 1 : 1 - state.frac);
+
+  function tick() {
+    const ts = performance.now();
+    const dt = state.lastTs == null ? 0 : Math.min(250, ts - state.lastTs);
+    state.lastTs = ts;
+    advance(dt / SPEEDS[cfg.speed]);
+  }
+
+  function setPlaying(on) {
+    state.playing = on && !state.done;
+    clearInterval(state.timer); state.lastTs = null;
+    if (state.playing) { state.lastTs = performance.now(); state.timer = setInterval(tick, 33); }
+    if (state.playing && cfg.bgm) BGM.start(); else BGM.stop();
+    updatePanel();
+  }
+
+  function finish() {
+    if (state.pos) fill(-state.pos, '大引け決済');
+    trackEquity();
+    state.done = true;
+    setPlaying(false);
+    recordDay();
+    updatePanel();
+    showResult();
+  }
+
+  // ---------- 成績の保存（このブラウザの localStorage） ----------
+  const HIST_KEY = 'nqdojo-history';
+  let history = [];
+  try { history = JSON.parse(localStorage.getItem(HIST_KEY) || '[]'); if (!Array.isArray(history)) history = []; }
+  catch (e) { history = []; }
+  const saveHist = () => { try { localStorage.setItem(HIST_KEY, JSON.stringify(history)); } catch (e) {} };
+
+  function recordDay() {
+    const t = state.trades;
+    history.push({
+      at: Date.now(), day: isSample() ? dayName(state.session) : state.session.day, mode: state.mode,
+      pnl: state.realized - state.fees, fees: state.fees, maxDD: state.maxDD,
+      trades: t.length, wins: t.filter(x => x.pnl > 0).length,
+    });
+    saveHist();
+    renderCumulative();
+  }
+
+  function cumulative() {
+    const c = { days: history.length, pnl: 0, winDays: 0, loseDays: 0, trades: 0, wins: 0 };
+    for (const h of history) {
+      c.pnl += h.pnl; c.trades += h.trades; c.wins += h.wins;
+      if (h.pnl > 0) c.winDays++; else if (h.pnl < 0) c.loseDays++;
+    }
+    return c;
+  }
+
+  function renderCumulative() {
+    const c = cumulative();
+    $('cDays').textContent = `${c.days}日`;
+    $('cPnl').textContent = fmt$(c.pnl); signCls($('cPnl'), c.pnl);
+    $('cWL').textContent = c.days ? `${c.winDays}勝 / ${c.loseDays}敗` : '-';
+    const avg = c.days ? c.pnl / c.days : 0;
+    $('cAvg').textContent = c.days ? fmt$(avg) : '-'; signCls($('cAvg'), avg);
+    $('cWin').textContent = c.trades ? `${Math.round(c.wins / c.trades * 100)}%（${c.trades}回）` : '-';
+  }
+
+  function showHistory() {
+    const c = cumulative(), tb = $('histRows');
+    $('histSummary').textContent = c.days
+      ? `${c.days}日 / 累計 ${fmt$(c.pnl)} / 勝ち日 ${c.winDays}・負け日 ${c.loseDays}`
+      : 'まだ記録がありません。1日を最後まで遊ぶと記録されます。';
+    tb.textContent = '';
+    let run = 0;
+    const rows = history.map(h => { run += h.pnl; return [h, run]; }).reverse(); // 新しい順
+    for (const [h, cum] of rows) {
+      const d = new Date(h.at);
+      const at = `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      const cells = [at, h.day, h.mode === 'rth' ? '本場' : '先物1日', h.trades,
+        h.trades ? `${Math.round(h.wins / h.trades * 100)}%` : '-', fmt$(-h.maxDD), fmt$(h.pnl), fmt$(cum)];
+      const tr = document.createElement('tr');
+      cells.forEach((v, j) => {
+        const td = document.createElement('td'); td.textContent = v;
+        if (j === 6) signCls(td, h.pnl); if (j === 7) signCls(td, cum);
+        tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    }
+    $('histDlg').showModal();
+  }
+
+  $('btnHist').onclick = () => { setPlaying(false); showHistory(); };
+  $('histClose').onclick = () => $('histDlg').close();
+  $('btnHistReset').onclick = () => {
+    if (!history.length) return;
+    if (!confirm(`これまでの成績（${history.length}日分）を消します。元に戻せません。よろしいですか？`)) return;
+    history = []; saveHist(); renderCumulative();
+  };
+  renderCumulative();
+
+  const isSample = () => dataset && dataset.kind === 'sample';
+  const dayName = s => {
+    if (isSample()) return `サンプル ${s.n + 1}日目`;
+    return `${s.day}（${WD[new Date(s.day + 'T00:00:00Z').getUTCDay()]}）`;
+  };
+  function dayTitle(s) {
+    return `${dayName(s)} ${state.mode === 'rth' ? '本場' : '先物1日'}${isSample() ? '（架空）' : ''}`;
+  }
+
+  function startDay(mode, session, hidden) {
+    setPlaying(false);
+    Object.assign(state, {
+      mode, session, hidden, done: false, pos: 0, avg: 0, realized: 0, fees: 0, trades: [], markers: [], peak: 0, maxDD: 0,
+      from: Math.max(0, session.start - PRE_BARS), idx: session.start - 1, frac: 1,
+    });
+    state.price = bars[state.idx].c;
+    cfg.mode = mode; saveCfg();
+    setTimeFormatting(hidden || isSample()); // サンプルの日付は架空なので出さない
+    computeIndicators();
+    updateEntryLine();
+    renderAll();
+    const last = state.idx - state.from; // 論理インデックスは表示データ内の位置
+    chart.timeScale().setVisibleLogicalRange({ from: last - 100, to: last + 30 });
+    $('dayLabel').textContent = hidden ? '日付：？？？（終了後に公開）' : dayTitle(session);
+    updatePanel();
+  }
+
+  function showResult() {
+    const total = state.realized - state.fees;
+    const t = state.trades, wins = t.filter(x => x.pnl > 0).length;
+    $('resultTitle').textContent = `本日の結果 — ${dayTitle(state.session)}`;
+    $('dayLabel').textContent = dayTitle(state.session);
+    $('resultPnl').textContent = fmt$(total); signCls($('resultPnl'), total);
+    const c = cumulative();
+    $('resultCum').textContent = `累計 ${fmt$(c.pnl)}（${c.days}日 / 勝ち日 ${c.winDays}・負け日 ${c.loseDays}）`;
+    $('rCount').textContent = t.length;
+    $('rWin').textContent = t.length ? `${Math.round(wins / t.length * 100)}%（${wins}勝${t.length - wins}敗）` : '-';
+    $('rDD').textContent = fmt$(-state.maxDD);
+    $('rFee').textContent = fmt$(state.fees);
+    const tb = $('rTrades'); tb.textContent = '';
+    for (const x of t) {
+      const tr = document.createElement('tr');
+      const cells = [x.time, x.side, x.qty, fmtP(x.entry), fmtP(x.exit), (x.pts >= 0 ? '+' : '') + x.pts.toFixed(2), fmt$(x.pnl)];
+      cells.forEach((v, j) => { const td = document.createElement('td'); td.textContent = v; if (j >= 5) signCls(td, x.pnl); tr.appendChild(td); });
+      tb.appendChild(tr);
+    }
+    if (!t.length) { const tr = document.createElement('tr'); const td = document.createElement('td'); td.colSpan = 7; td.textContent = 'トレードなし'; tr.appendChild(td); tb.appendChild(tr); }
+    $('resultDlg').showModal();
+  }
+
+  // ---------- 開始ダイアログ ----------
+  function fillDaySelect() {
+    const list = SESSIONS[$('modeSel').value];
+    const sel = $('daySel'); sel.textContent = '';
+    const r = document.createElement('option'); r.value = 'random'; r.textContent = 'ランダム'; sel.appendChild(r);
+    for (let i = list.length - 1; i >= 0; i--) {
+      const o = document.createElement('option');
+      o.value = i; o.textContent = dayName(list[i]);
+      sel.appendChild(o);
+    }
+    $('startGo').disabled = !list.length;
+    $('dataInfo').textContent = `データ: ${dataset.name}（本場 ${SESSIONS.rth.length}日 / 先物1日 ${SESSIONS.globex.length}日）`;
+  }
+  function openStart() {
+    setPlaying(false);
+    if (!dataset) { openData(); return; }
+    // 遊べる日がない時間帯は選べないようにする
+    for (const o of $('modeSel').options) o.disabled = !SESSIONS[o.value].length;
+    if (!SESSIONS[cfg.mode].length) cfg.mode = SESSIONS.rth.length ? 'rth' : 'globex';
+    $('modeSel').value = cfg.mode; $('hideDate').checked = cfg.hideDate;
+    $('hideDate').closest('label').hidden = isSample();
+    fillDaySelect();
+    $('startDlg').showModal();
+  }
+  $('modeSel').addEventListener('change', fillDaySelect);
+  $('startCancel').onclick = () => $('startDlg').close();
+  $('startGo').onclick = () => {
+    const mode = $('modeSel').value, list = SESSIONS[mode], v = $('daySel').value;
+    if (!list.length) return;
+    const random = v === 'random';
+    const s = random ? list[Math.floor(Math.random() * list.length)] : list[+v];
+    cfg.hideDate = $('hideDate').checked; saveCfg();
+    $('startDlg').close();
+    startDay(mode, s, random && cfg.hideDate);
+  };
+  $('btnNew').onclick = openStart;
+  $('resultClose').onclick = () => $('resultDlg').close();
+  $('resultNext').onclick = () => { $('resultDlg').close(); openStart(); };
+
+  // ---------- 操作 ----------
+  const qty = () => Math.max(1, Math.min(50, parseInt($('qty').value, 10) || 1));
+  // 約定できる時だけ売買して「トン」を鳴らす
+  const act = (kind, delta, reason) => {
+    if (!inSession() || !delta) return;
+    fill(delta, reason);
+    if (cfg.se) BGM.se(kind);
+  };
+  const doLong = () => act('long', qty());
+  const doShort = () => act('short', -qty());
+  const doFlat = () => act('flat', -state.pos, '決済');
+  const doRev = () => act('rev', -2 * state.pos, 'ドテン');
+  $('seOn').checked = cfg.se;
+  $('seOn').addEventListener('change', () => { cfg.se = $('seOn').checked; saveCfg(); });
+  $('btnLong').onclick = doLong; $('btnShort').onclick = doShort; $('btnFlat').onclick = doFlat; $('btnRev').onclick = doRev;
+  $('btnPlay').onclick = () => setPlaying(!state.playing);
+  $('btnStep').onclick = () => { setPlaying(false); step(); };
+
+  document.addEventListener('keydown', e => {
+    if (document.querySelector('dialog[open]') || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    const k = e.key.toLowerCase();
+    if (k === ' ') { e.preventDefault(); setPlaying(!state.playing); }
+    else if (k === 'arrowright') { e.preventDefault(); setPlaying(false); step(); }
+    else if (k === 'b') doLong();
+    else if (k === 's') doShort();
+    else if (k === 'x') doFlat();
+    else if (k === 'r') doRev();
+  });
+
+  const speedLabel = () => { $('speedLabel').textContent = `${(SPEEDS[cfg.speed] / 1000).toFixed(SPEEDS[cfg.speed] < 1000 ? 2 : 1)} 秒/本`; };
+  $('speed').value = cfg.speed; speedLabel();
+  $('speed').addEventListener('input', () => { cfg.speed = +$('speed').value; saveCfg(); speedLabel(); if (state.playing) setPlaying(true); });
+  $('qty').value = cfg.qty;
+  $('qty').addEventListener('change', () => { cfg.qty = qty(); $('qty').value = cfg.qty; saveCfg(); });
+  $('fee').value = cfg.fee;
+  $('fee').addEventListener('change', () => { cfg.fee = Math.max(0, parseFloat($('fee').value) || 0); saveCfg(); });
+
+  // インジケーター設定 UI
+  const smaRows = $('smaRows');
+  cfg.sma.forEach((s, j) => {
+    const lab = document.createElement('label');
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = s.on;
+    const sw = document.createElement('span'); sw.className = 'sw'; sw.style.background = SMA_COLORS[j];
+    lab.append(cb, ` SMA${j + 1} `, sw);
+    const lab2 = document.createElement('label');
+    const num = document.createElement('input'); num.type = 'number'; num.min = 1; num.max = 1000; num.value = s.period;
+    lab2.append('期間 ', num);
+    smaRows.append(lab, lab2);
+    cb.addEventListener('change', () => { s.on = cb.checked; onIndChange(); });
+    num.addEventListener('change', () => { s.period = Math.max(1, Math.min(1000, parseInt(num.value, 10) || 1)); num.value = s.period; onIndChange(true); });
+  });
+  const bbMap = { bbOn: 'on', bbMid: 'mid', bb1: 's1', bb2: 's2', bb3: 's3' };
+  for (const id in bbMap) {
+    $(id).checked = cfg.bb[bbMap[id]];
+    $(id).addEventListener('change', () => { cfg.bb[bbMap[id]] = $(id).checked; onIndChange(); });
+  }
+  $('bbPeriod').value = cfg.bb.period;
+  $('bbPeriod').addEventListener('change', () => { cfg.bb.period = Math.max(2, Math.min(500, parseInt($('bbPeriod').value, 10) || 20)); $('bbPeriod').value = cfg.bb.period; onIndChange(true); });
+  $('bgmOn').checked = cfg.bgm;
+  $('bgmOn').addEventListener('change', () => {
+    cfg.bgm = $('bgmOn').checked; saveCfg();
+    if (cfg.bgm && state.playing) BGM.start(); else BGM.stop();
+  });
+  $('bgmVol').value = cfg.bgmVol;
+  BGM.setVolume(cfg.bgmVol / 100);
+  $('bgmVol').addEventListener('input', () => { cfg.bgmVol = +$('bgmVol').value; saveCfg(); BGM.setVolume(cfg.bgmVol / 100); });
+
+  $('smoothOn').checked = cfg.smooth;
+  $('smoothOn').addEventListener('change', () => { cfg.smooth = $('smoothOn').checked; onIndChange(); if (state.session) renderLive(); });
+  // ステータスパネル設定 UI
+  const spNum = (id, key, min, int) => {
+    $(id).value = cfg.panel[key];
+    $(id).addEventListener('change', () => {
+      const v = int ? parseInt($(id).value, 10) : parseFloat($(id).value);
+      cfg.panel[key] = Number.isFinite(v) ? Math.max(min, v) : DEFAULTS.panel[key];
+      $(id).value = cfg.panel[key]; saveCfg(); updatePanel();
+    });
+  };
+  spNum('spMaLen', 'maLen', 1, true); spNum('spSlopeBars', 'slopeBars', 1, true);
+  spNum('spSlopeTh', 'slopeTh', 0, false); spNum('spPosBand', 'posBand', 0, false);
+  $('spOn').checked = cfg.panel.on;
+  $('spOn').addEventListener('change', () => { cfg.panel.on = $('spOn').checked; saveCfg(); updatePanel(); });
+  $('spSize').value = cfg.panel.size;
+  $('spSize').addEventListener('change', () => { cfg.panel.size = $('spSize').value; saveCfg(); updatePanel(); });
+
+  $('vwapOn').checked = cfg.vwap;
+  $('vwapOn').addEventListener('change', () => { cfg.vwap = $('vwapOn').checked; onIndChange(); });
+  // インジケーターだけ初期設定に戻す（再生中の日はそのまま）
+  $('indReset').addEventListener('click', () => {
+    const d = fresh();
+    const boxes = smaRows.querySelectorAll('input[type=checkbox]'), nums = smaRows.querySelectorAll('input[type=number]');
+    cfg.sma.forEach((s, j) => { Object.assign(s, d.sma[j]); boxes[j].checked = s.on; nums[j].value = s.period; });
+    Object.assign(cfg.bb, d.bb);
+    for (const id in bbMap) $(id).checked = cfg.bb[bbMap[id]];
+    $('bbPeriod').value = cfg.bb.period;
+    cfg.vwap = d.vwap; $('vwapOn').checked = cfg.vwap;
+    onIndChange(true);
+  });
+
+  function onIndChange(recompute) {
+    saveCfg();
+    if (!state.session) return;
+    if (recompute) computeIndicators();
+    const range = chart.timeScale().getVisibleLogicalRange();
+    renderAll();
+    if (range) chart.timeScale().setVisibleLogicalRange(range);
+  }
+
+  // ---------- 銘柄の設定 ----------
+  function renderInst() {
+    const custom = cfg.inst.kind === 'custom';
+    $('instSel').value = cfg.inst.kind;
+    for (const el of document.querySelectorAll('.instCustom')) el.hidden = !custom;
+    $('instPv').value = cfg.inst.pv; $('instTick').value = cfg.inst.tick;
+    const name = custom ? '1pt' : `${INSTRUMENTS[cfg.inst.kind].label} 1pt`;
+    $('instLabel').textContent = `${name} = $${pointValue()}`;
+  }
+  $('instSel').addEventListener('change', () => {
+    cfg.inst.kind = $('instSel').value;
+    if (cfg.inst.kind !== 'custom') Object.assign(cfg.inst, { pv: INSTRUMENTS[cfg.inst.kind].pv, tick: INSTRUMENTS[cfg.inst.kind].tick });
+    saveCfg(); renderInst(); updatePanel();
+  });
+  $('instPv').addEventListener('change', () => { cfg.inst.pv = Math.max(0, parseFloat($('instPv').value) || 0); saveCfg(); renderInst(); updatePanel(); });
+  $('instTick').addEventListener('change', () => { cfg.inst.tick = Math.max(0, parseFloat($('instTick').value) || 0) || 0.01; saveCfg(); renderInst(); });
+  renderInst();
+
+  // ---------- データの切り替え ----------
+  const fmtDate = sec => new Date(sec * 1000 + 9 * 3600000).toISOString().slice(0, 16).replace('T', ' ');
+
+  function useDataset(ds) {
+    setPlaying(false);
+    bars = prepareBars(ds.bars);
+    SESSIONS = sessionsOf(bars);
+    dataset = ds;
+    cfg.lastData = ds.kind; saveCfg();
+    // 前のデータの日をチャートから片付ける
+    Object.assign(state, { session: null, done: true, idx: -1, drawn: -1, pos: 0, avg: 0, realized: 0, fees: 0, trades: [], markers: [] });
+    candles.setData([]); volume.setData([]);
+    for (const k in seriesByKey()) seriesByKey()[k].setData([]);
+    candles.setMarkers([]); updateEntryLine();
+    $('dayLabel').textContent = '-'; $('clock').textContent = '--:-- JST'; $('progress').textContent = '';
+    $('dataLabel').textContent = ds.kind === 'sample' ? 'データ: サンプル（架空）' : `データ: ${ds.short || ds.name}`;
+    updatePanel();
+  }
+
+  const localDataset = () => window.NQ_DATA && {
+    kind: 'local', name: `${NQ_DATA.symbol} 5分足（このPCの data フォルダ）`, short: `${NQ_DATA.symbol}（ローカル）`, bars: NQ_DATA.bars,
+  };
+  const sampleDataset = () => ({ kind: 'sample', name: 'サンプル（架空の値動き・実際の相場ではありません）', bars: DojoData.makeSample(20) });
+
+  // ---------- データの取り込み画面 ----------
+  let pending = null, lastText = null, lastFile = '';
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  async function describeSaved() {
+    const saved = await DojoData.load('import');
+    const now = dataset ? `いま使っているデータ：<b>${esc(dataset.name)}</b>` : 'いま使っているデータ：<b>まだありません</b>';
+    const sv = saved ? `／このブラウザに保存してあるCSV：<b>${esc(saved.name)}</b>` : '';
+    $('dataNow').innerHTML = now + sv;
+    $('btnClearData').disabled = !saved;
+    $('appendData').disabled = !saved;
+    if (!saved) $('appendData').checked = false;
+  }
+
+  function openData() {
+    setPlaying(false);
+    $('tzSel').value = cfg.tz;
+    describeSaved();
+    $('dataDlg').showModal();
+  }
+
+  function showImport(html, cls) { $('importResult').innerHTML = `<div class="${cls}">${html}</div>`; }
+
+  async function analyze() {
+    if (lastText == null) return;
+    const r = DojoData.parseCSV(lastText, cfg.tz);
+    pending = null; $('dataUse').disabled = true;
+    if (r.error) {
+      showImport(`<b>読み込めませんでした：</b>${esc(r.error)}${r.hint ? `<br><span class="small">${esc(r.hint)}</span>` : ''}`, 'err');
+      return;
+    }
+    let raw = r.bars, merged = false;
+    if ($('appendData').checked) {
+      const saved = await DojoData.load('import');
+      if (saved) { raw = DojoData.mergeBars(saved.bars, r.bars); merged = true; }
+    }
+    const ss = sessionsOf(prepareBars(raw)), i = r.info;
+    const lines = [
+      `<b>✓ 読み込めました：</b>${esc(lastFile)}`,
+      `5分足 <b>${raw.length.toLocaleString()}本</b>（${fmtDate(raw[0][0])} 〜 ${fmtDate(raw[raw.length - 1][0])} 日本時間）`,
+      `遊べる日：米国本場 <b>${ss.rth.length}日</b> ／ 先物の1日 <b>${ss.globex.length}日</b>`,
+    ];
+    if (merged) lines.push(`保存してあったデータにつなげました（今回のファイルは ${r.bars.length.toLocaleString()}本）`);
+    if (i.aggregated) lines.push(`${i.interval / 60}分足だったので、5分足にまとめました。`);
+    if (i.naive) lines.push(`時刻にタイムゾーンがなかったので、<b>${esc($('tzSel').selectedOptions[0].textContent)}</b>として読みました。違う場合は上で選び直してください。`);
+    if (i.skipped) lines.push(`<span class="warn">読み取れなかった行が ${i.skipped}行あり、飛ばしました。</span>`);
+    if (!i.hadVolume) lines.push('<span class="warn">出来高の列がないので、VWAP は単純平均になります。</span>');
+    if (!ss.rth.length && !ss.globex.length) {
+      lines.push('<span class="warn">ただし、1日分そろった日がありません（米国本場の 9:30〜16:00 ET がそろっている日が必要です）。もっと長い期間を書き出してください。</span>');
+      showImport(lines.join('<br>'), 'err');
+      return;
+    }
+    pending = { kind: 'import', name: `${lastFile.replace(/\.[^.]+$/, '')}（${raw.length.toLocaleString()}本）`, short: lastFile.replace(/\.[^.]+$/, ''), bars: raw };
+    $('dataUse').disabled = false;
+    showImport(lines.join('<br>'), 'ok');
+  }
+
+  function readFile(file) {
+    if (!file) return;
+    lastFile = file.name;
+    showImport('読み込んでいます…', 'ok');
+    const fr = new FileReader();
+    fr.onload = () => { lastText = String(fr.result); analyze(); };
+    fr.onerror = () => showImport('ファイルを開けませんでした。', 'err');
+    fr.readAsText(file);
+  }
+
+  const drop = $('drop');
+  drop.addEventListener('click', () => $('fileInput').click());
+  drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('fileInput').click(); } });
+  $('fileInput').addEventListener('change', () => { readFile($('fileInput').files[0]); $('fileInput').value = ''; });
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); readFile(e.dataTransfer.files[0]); });
+  $('tzSel').addEventListener('change', () => { cfg.tz = $('tzSel').value; saveCfg(); analyze(); });
+  $('appendData').addEventListener('change', analyze);
+
+  $('dataUse').onclick = async () => {
+    if (!pending) return;
+    try { await DojoData.save('import', { name: pending.name, short: pending.short, bars: pending.bars, savedAt: Date.now() }); }
+    catch (e) { showImport('このブラウザに保存できませんでした（今回だけ遊べます）。', 'err'); }
+    useDataset(pending);
+    pending = null; lastText = null; $('importResult').textContent = ''; $('dataUse').disabled = true;
+    $('dataDlg').close();
+    openStart();
+  };
+  $('btnSample').onclick = () => { useDataset(sampleDataset()); $('dataDlg').close(); openStart(); };
+  $('btnClearData').onclick = async () => {
+    if (!confirm('このブラウザに保存してあるCSVのデータを消します。よろしいですか？（成績の記録は消えません）')) return;
+    await DojoData.remove('import');
+    if (dataset && dataset.kind === 'import') {
+      dataset = null; bars = []; SESSIONS = { rth: [], globex: [] };
+      Object.assign(state, { session: null, done: true }); $('dataLabel').textContent = '';
+      updatePanel();
+    }
+    describeSaved();
+  };
+  $('dataClose').onclick = () => $('dataDlg').close();
+  $('btnData').onclick = openData;
+
+  // ---------- 初期表示 ----------
+  // 前回使ったデータ → このPCのデータ → 保存してあるCSV の順に探す。なければ取り込み画面を出す
+  (async () => {
+    updatePanel();
+    const saved = await DojoData.load('import');
+    const savedDs = saved && { kind: 'import', name: saved.name, short: saved.short, bars: saved.bars };
+    let ds = null;
+    if (cfg.lastData === 'sample') ds = sampleDataset();
+    else if (cfg.lastData === 'import' && savedDs) ds = savedDs;
+    else if (cfg.lastData === 'local' && window.NQ_DATA) ds = localDataset();
+    ds = ds || localDataset() || savedDs;
+    if (ds) { useDataset(ds); openStart(); } else openData();
+  })();
+
+  // 検証用
+  window.__dojo = { state, get bars() { return bars; }, get SESSIONS() { return SESSIONS; }, get dataset() { return dataset; }, ind: () => ind, cfg, candles, chart, BGM, useDataset };
+})();
+</script>
+</body>
+</html>

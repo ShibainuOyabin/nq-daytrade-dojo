@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.claude/
+
+# ローカル専用（Yahoo から取ったデータと取得ツールは公開しない）
+data/
+fetch_data.py
+start.bat
