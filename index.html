@@ -95,6 +95,7 @@
   <span id="clock">--:-- JST</span>
   <span id="progress" class="small"></span>
   <span style="flex:1"></span>
+  <button id="btnFeedback" class="small" style="padding:4px 10px" hidden>✉ 感想・要望・バグ報告を送る</button>
   <span id="visitLabel" class="small" title="このページが開かれた回数（日本時間の日ごと）"></span>
   <span id="dataLabel"></span>
   <button id="btnData">データ</button>
@@ -295,6 +296,24 @@
     </span>
   </div>
   <p class="small" style="margin-bottom:0">データは、入手元（TradingView・証券会社など）の利用規約の範囲で使ってください。このゲームは練習用で、投資の助言ではありません。</p>
+</dialog>
+
+<dialog id="fbDlg">
+  <h2>感想・要望・バグ報告を送る</h2>
+  <p style="margin:0 0 10px">シバイヌおやびんに直接届きます。気軽にどうぞ！</p>
+  <div class="ctrl" style="margin-bottom:8px" role="radiogroup" aria-label="種類">
+    <label><input type="radio" name="fbKind" value="感想" checked> 感想</label>
+    <label><input type="radio" name="fbKind" value="要望"> 要望</label>
+    <label><input type="radio" name="fbKind" value="バグ報告"> バグ報告</label>
+  </div>
+  <textarea id="fbText" maxlength="2000" rows="7" style="width:100%;font:inherit;color:var(--text);background:#0f1218;border:1px solid var(--line);border-radius:6px;padding:8px;resize:vertical" placeholder="例：VWAPの色を変えたい／○○の時に画面が止まった など"></textarea>
+  <input id="fbWebsite" type="text" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px">
+  <div class="small" style="margin-top:4px"><span id="fbCount">0</span> / 2000 文字　・　返信はできません。名前やメールアドレスなどの個人情報は書かないでください。<br>バグ報告のために、使っているブラウザの種類・画面の大きさ・データの種類（サンプル／読み込んだCSV）も一緒に送ります。</div>
+  <div id="fbStatus" style="margin-top:8px"></div>
+  <div class="ctrl" style="justify-content:flex-end;margin-top:12px">
+    <button id="fbClose">閉じる</button>
+    <button id="fbSend" style="background:var(--accent);border-color:var(--accent)">送る</button>
+  </div>
 </dialog>
 
 <dialog id="startDlg">
@@ -1381,6 +1400,40 @@
       $('visitLabel').textContent = `👀 累計 ${f(c.total)} ／ 昨日 ${f(c.yesterday)} ／ 今日 ${f(c.today)}`;
     } catch (e) { /* 数えられなくてもゲームはそのまま遊べる */ }
   })();
+
+  // ---------- 感想・要望・バグ報告 ----------
+  // Google Apps Script（feedback/Code.gs）に送り、そこから作者の Gmail に届く。送り先のアドレスはページに書かない
+  const FEEDBACK_URL = 'https://script.google.com/macros/s/AKfycbwknOQmQK7QUP4f2RiSuQMi7kNSh12ADajWJxdarB6HQonscTdDPdTYiMtxeSTwuEk6/exec';
+  const FB_WAIT = 60 * 1000;   // 続けて送れるまでの間隔
+  if (FEEDBACK_URL) $('btnFeedback').hidden = false;
+  const fbKind = () => document.querySelector('input[name=fbKind]:checked').value;
+  const fbStatus = (text, cls) => { $('fbStatus').textContent = text; $('fbStatus').className = cls || 'small'; };
+  $('btnFeedback').onclick = () => { setPlaying(false); fbStatus(''); $('fbSend').disabled = false; $('fbDlg').showModal(); $('fbText').focus(); };
+  $('fbClose').onclick = () => $('fbDlg').close();
+  $('fbText').addEventListener('input', () => { $('fbCount').textContent = $('fbText').value.length; });
+  $('fbSend').onclick = async () => {
+    const message = $('fbText').value.trim();
+    if (!message) { fbStatus('メッセージを書いてください。', 'neg'); return; }
+    let last = 0; try { last = +localStorage.getItem('nqdojo-fb-last') || 0; } catch (e) {}
+    if (Date.now() - last < FB_WAIT) { fbStatus('少し時間をあけてから、もう一度送ってください。', 'neg'); return; }
+    $('fbSend').disabled = true; fbStatus('送っています…');
+    const body = new URLSearchParams({
+      kind: fbKind(), message, website: $('fbWebsite').value,
+      data: dataset ? (dataset.kind === 'sample' ? 'サンプル' : dataset.kind === 'import' ? '読み込んだCSV' : 'ローカル') : 'なし',
+      screen: `${innerWidth}x${innerHeight}`, ua: navigator.userAgent,
+    });
+    try {
+      const r = await fetch(FEEDBACK_URL, { method: 'POST', body });
+      const j = await r.json().catch(() => ({ ok: r.ok }));
+      if (!j.ok) throw new Error(j.error || 'failed');
+      try { localStorage.setItem('nqdojo-fb-last', String(Date.now())); } catch (e) {}
+      $('fbText').value = ''; $('fbCount').textContent = '0';
+      fbStatus('✓ 送りました。ありがとうございます！', 'pos');
+    } catch (e) {
+      $('fbSend').disabled = false;
+      fbStatus(e.message === 'busy' ? 'いま混み合っています。しばらくしてから送ってください。' : '送れませんでした。時間をおいてもう一度試してください。', 'neg');
+    }
+  };
 
   // ---------- 初期表示 ----------
   // 前回使ったデータ → このPCのデータ → 保存してあるCSV の順に探す。なければ取り込み画面を出す
