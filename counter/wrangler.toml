@@ -7,3 +7,13 @@ workers_dev = true
 binding = "DB"
 database_name = "dojo-counter"
 database_id = "9f3647fa-ae6c-4c84-87a0-f2a277b20f9a"
+
+# 同じ送り元からの /hit は 1 分に 5 回まで
+[[ratelimits]]
+name = "LIMITER"
+namespace_id = "1001"
+simple = { limit = 5, period = 60 }
+
+# 断った連打の記録（送り元の国・ブラウザの種類）を Cloudflare の画面で見られるようにする
+[observability]
+enabled = true
